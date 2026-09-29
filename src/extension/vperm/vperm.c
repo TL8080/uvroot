@@ -100,6 +100,15 @@ typedef struct VpermRoot {
     bool local;			/* false when the root is a netfs cache */
     bool fs_backed;		/* the root has its own filesystem metadata */
     bool loaded;
+    /*
+     * Identity of the database file.  The container must never be able
+     * to read or change the database, and a path comparison alone is not
+     * enough: a hard link created before --vperm was enabled -- or from
+     * the host -- reaches the same inode under a different name.
+     */
+    bool db_id;			/* @db_dev/@db_ino are valid */
+    dev_t db_dev;
+    ino_t db_ino;
 } VpermRoot;
 
 typedef struct VpermFd {
@@ -183,6 +192,8 @@ typedef struct VpermConfig {
     bool shims_ready;
     bool no_shims;		/* --vperm-nosu: no virtual su/sudo */
 } VpermConfig;
+
+static void root_db_ident(VpermRoot *root);
 
 #define VMAP_MAGIC "/.uvroot-vperm-switch"
 
@@ -452,12 +463,36 @@ static int db_save(VpermRoot *root)
     char temporary[PATH_MAX];
     VpermEntry *entry;
     FILE *file;
+    int fd;
+    int attempt;
 
     snprintf(temporary, sizeof(temporary), "%s.tmp", root->db);
 
-    file = fopen(temporary, "w");
-    if (file == NULL)
+    /*
+     * The container is not allowed to touch the database, but <db>.tmp
+     * is not covered by that name check.  Without O_NOFOLLOW a symlink
+     * planted there would make this write truncate whatever it points at
+     * on the host, so drop any such entry first and refuse to follow a
+     * symlink; O_EXCL keeps a concurrent replant from being followed too.
+     */
+    fd = -1;
+    for (attempt = 0; attempt < 3; attempt++) {
+	unlink(temporary);
+	fd = open(temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0600);
+	if (fd >= 0 || errno != EEXIST)
+	    break;
+    }
+    if (fd < 0)
 	return -errno;
+
+    file = fdopen(fd, "w");
+    if (file == NULL) {
+	int status = -errno;
+
+	close(fd);
+	unlink(temporary);
+	return status;
+    }
 
     fprintf(file, "# uvroot vperm database - virtual ownership and permissions\n");
 
@@ -485,6 +520,9 @@ static int db_save(VpermRoot *root)
 	unlink(temporary);
 	return status;
     }
+
+    /* rename(2) installs a new inode: refresh the identity we protect. */
+    root_db_ident(root);
 
     return 0;
 }
@@ -1200,6 +1238,22 @@ static void root_db_rel(VpermRoot *root)
 	root->db_rel = NULL;
 }
 
+/*
+ * Remember the database's identity so that names other than the database
+ * path (hard links) can be recognized and refused as well.
+ */
+static void root_db_ident(VpermRoot *root)
+{
+    struct stat st;
+
+    root->db_id = false;
+    if (root->db != NULL && stat(root->db, &st) == 0) {
+	root->db_dev = st.st_dev;
+	root->db_ino = st.st_ino;
+	root->db_id = true;
+    }
+}
+
 static void root_add(Tracee *tracee, VpermConfig *config, const char *host,
 		     const char *guest)
 {
@@ -1243,6 +1297,7 @@ static void root_add(Tracee *tracee, VpermConfig *config, const char *host,
     }
 
     root_db_rel(root);
+    root_db_ident(root);
     root->next = config->roots;
     config->roots = root;
 
@@ -1409,9 +1464,24 @@ static void fd_duplicate(VpermTracee *state, int old_fd, int new_fd)
 static const char *relative_of(VpermRoot *root, const char *host,
 			       const char *rel)
 {
+    struct stat st;
+
     if (root->db_rel != NULL && strcmp(rel, root->db_rel) == 0)
 	return NULL;
-    (void) host;
+
+    /*
+     * Same file, another name: a hard link to the database must be
+     * refused too, otherwise the container could read and rewrite the
+     * database through it.  lstat(2) is deliberate -- what matters is
+     * the inode of the name itself, so that creating a symlink *to* the
+     * database stays allowed (access through it is caught above, since
+     * the path is canonicalized before it gets here).
+     */
+    if (root->db_id && host != NULL
+	&& lstat(host, &st) == 0
+	&& st.st_dev == root->db_dev && st.st_ino == root->db_ino)
+	return NULL;
+
     return rel;
 }
 
@@ -2405,6 +2475,15 @@ static int handle_enter_end(Tracee *tracee, VpermConfig *config,
 	    snprintf(state->pend_new_rel, sizeof(state->pend_new_rel),
 		     "%s", state->last_rel);
 	    state->pend_new_valid = true;
+
+	    /*
+	     * The source of a rename is checked above, but nothing must be
+	     * able to *replace* the database either -- not even through a
+	     * hard link to it.
+	     */
+	    if (relative_of(state->last_root, state->last_host,
+			    state->last_rel) == NULL)
+		return -EACCES;
 	}
 
 	/* Both parents must be writable for a rename(2).  */

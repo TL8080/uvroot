@@ -183,13 +183,14 @@ env -u LD_LIBRARY_PATH $PREFIX/glibc/bin/aarch64-linux-gnu-gcc -O2 probe.c
 
 ### 3.2 虚拟用户（vperm）与读写隔离（--read-only / --ro）实测
 
-板子上另跑了三组隔离用例，共 **99 项全绿**（musl 与 glibc guest 都覆盖）：
+板子上另跑了四组隔离用例，共 **135 项全绿**（musl 与 glibc guest 都覆盖）：
 
 | 用例 | 覆盖 | 结果 |
 |---|---|---|
 | `cases/61-vperm-device.sh` | 虚拟 uid/gid/mode 数据库、宿主元数据不变、权限放行/拒绝、祖先 x 与父目录 w、`/etc/passwd` 读写、su/sudo 虚拟身份、shim 保护、setuid 族、跨 id 杀进程、DB 自保护与维护 | **43/43** |
 | `cases/62-readonly-device.sh` | `--ro=<path>` 单绑定锁定、递归与子进程、`--ro=/`、`--read-only`（write/mkdir/unlink/truncate 全拒而读/stat/exec 正常）、id0 也拒、缺失路径仅告警、外部删除后不可重建、不跨运行泄漏 | **32/32** |
 | `cases/63-isolation-bothguests.sh` | 上面两组的核心项在 **Alpine/musl 与 Ubuntu/glibc 两个 guest** 各跑一遍 | **24/24**（12+12） |
+| `cases/64-vperm-db-protection.sh` | **数据库容器内只读性**：读写/追加/截断/删除/重命名(含落到 DB 上)/chmod/chown/等价路径(`/./`、`../`)、符号链接与**硬链接**绕过、`.tmp` 符号链接攻击；以及两条合法写入路径（宿主侧改库生效、uvroot 自身维护落库含换 inode 后仍受保护） | **36/36** |
 
 关键证据（宿主侧独立核对，不由 guest 自证）：
 
@@ -306,7 +307,69 @@ tar xf /tmp/m.tar -C /tmp/dst2                # 带 -C 就完全正常（5 项�
 所以怀疑是 NDK 版本/工具链相关的上游行为，需要下一步对照 Termux 的
 `uvroot` 构建配方与其补丁。**建议优先级高**——它直接决定 glibc 容器能否装包。
 
-### 4.3 【环境类，已处置】
+### 4.3 【已修复】vperm 数据库在容器内可被**硬链接**读写 + `<db>.tmp` 符号链接可重定向 uvroot 的写
+
+写 §3.2 的隔离用例时顺手做了攻击面探测，发现两个**真实可复现**的绕过：
+
+**(a) 硬链接绕过（提权：容器内可自行改权限库）**
+
+DB 的保护只比较**路径字符串**（`relative_of()` 里 `strcmp(rel, root->db_rel)`），
+所以容器内建一个硬链接就能绕开：
+
+```
+$ uvroot -r $R --vperm-id=0 /bin/ln /.uvroot-vperm /t/dblink     # 成功
+$ uvroot -r $R --vperm-id=0 /bin/cat /t/dblink
+# uvroot vperm database - virtual ownership and permissions      <- 读到了
+100700 10117 10117	t/data.txt
+$ uvroot -r $R --vperm-id=0 /bin/sh -c 'echo "999999 0 0 pwned" >> /t/dblink'
+  db md5 变了、size 90 -> 110                                     <- 写进去了
+```
+
+容器内因此可以给自己发任意 uid/gid、把 0700 改成 0777——**虚拟权限形同虚设**。
+
+**(b) `<db>.tmp` 符号链接攻击（容器内 → 宿主任意文件写）**
+
+`db_save()` 是 `fopen("<db>.tmp", "w")` 后 `rename()` 上去，而 `fopen` 会**跟随符号链接**。
+`.uvroot-vperm.tmp` 不在保护名单里（只保护 `.uvroot-vperm`），所以容器内可以提前把它
+做成指向宿主绝对路径的符号链接，让 uvroot 自己把内容写到那个文件上：
+
+```
+$ uvroot -r $R --vperm-id=0 /bin/ln -s <HOSTPATH> /.uvroot-vperm.tmp
+$ uvroot -r $R --vperm  /bin/sh -c 'chmod 705 /t/data.txt'   # 触发 db_save
+  victim=[# uvroot vperm database - ... 100705 10117 10117 t/data.txt]   <- 被改写
+```
+
+注意 guest 给的**绝对**符号链接目标不被翻译，所以它命名的是宿主路径——这是一个
+容器内到宿主文件写的原语。
+
+**修复**（`src/extension/vperm/vperm.c`，已实测前后对比）：
+
+| 改动 | 作用 |
+|---|---|
+| `VpermRoot` 增加 `db_dev/db_ino/db_id`，`root_db_ident()` 记录身份，`db_save()` 成功后刷新 | 因为 `db_save()` 用 `rename()` 落盘，**每次保存 inode 都会变**，身份必须跟着刷新 |
+| `relative_of()` 增加 `lstat(host)` 的 (dev,ino) 比较（用 `lstat` 而非 `stat`，故意让「创建指向 DB 的符号链接」继续成功，因为经过它的访问会被路径比较拦下） | 关掉硬链接绕过 |
+| rename 处理里对**目的地**也做 `relative_of()` 检查 | 关掉「把别的文件 rename 到 DB 上」 |
+| `db_save()` 改为 `unlink(tmp)` + `open(O_CREAT\|O_EXCL\|O_NOFOLLOW, 0600)`（EEXIST 重试 3 次） | 关掉 `.tmp` 符号链接；顺带把 DB 宿主权限从 0644 收紧到 **0600** |
+
+**前后对比证据**（同一个用例，`uvroot-prefix` = 修复前的 HEAD 构建 / `uvroot-ndk` = 修复后）：
+
+```
+############ uvroot-prefix ############
+  hardlink: read=[100700 10117 10117	t/data.txt] ... write_took_effect=0
+  .tmp symlink: victim=[# uvroot vperm database - ...]  => TRUNCATED (exploited)
+
+############ uvroot-ndk ############
+  hardlink: read=[] ... write_took_effect=0
+  .tmp symlink: victim=[IMPORTANT-DATA]  => SAFE
+```
+
+回归：`cases/64-vperm-db-protection.sh` **36/36**，且 61/62/63 全部保持通过。
+
+**仍然成立的合法写入路径**（用例里都验了）：宿主侧直接改数据库下一次运行即生效；
+uvroot 自身的维护写入（chmod/chown 落库、rename 搬迁、unlink 删条目、启动校验写 `.bak`）
+正常工作，且**换 inode 之后新库依然受保护**。`.bak` 只写不读，被篡改无影响。
+
+### 4.4 【环境类，已处置】
 
 | 问题 | 现象 | 处置 |
 |---|---|---|
@@ -376,6 +439,7 @@ bash a5-test/…   # 见下表脚本
 | `61-vperm-device.sh` | **虚拟用户 vperm** 43 项（§3.2） |
 | `62-readonly-device.sh` | **读写隔离 `--read-only`/`--ro`** 32 项（§3.2） |
 | `63-isolation-bothguests.sh` | 上面两组的核心项在 musl + glibc guest 各跑一遍，24 项（§3.2） |
+| `64-vperm-db-protection.sh` | **vperm 数据库容器内只读性**（含硬链接绕过与 `.tmp` 符号链接攻击），36 项（§4.3） |
 
 ## 7. 结论
 
@@ -388,11 +452,15 @@ bash a5-test/…   # 见下表脚本
 * **不依赖容器包管理器的独立验证**（§3.1）：zig 产出的 musl 二进制、zig gnu.2.39 与
   Termux `gcc-glibc` 产出的 glibc 动态/静态二进制，在对应 rootfs 下**全部通过**，
   且与官方 proot 行为一致 —— 说明 uvroot 对两种 libc 的加载/系统调用路径本身没问题。
-* **隔离能力（§3.2）**：**虚拟用户与读写隔离在板子上 99 项全绿**，
+* **隔离能力（§3.2）**：**虚拟用户与读写隔离在板子上 135 项全绿**，
   且 musl 与 glibc guest 结果一致。最关键的一条是**隔离是真实的**：
   guest 里 `chown`/`chmod` 之后，宿主侧 `stat` 仍是 `644 10117:10117`，
   虚拟身份只活在 `.uvroot-vperm` 数据库里；`--ro`/`--read-only` 连 id0 都拒，
   但读/`stat`/`exec` 不受影响。
+* **权限库自身的安全性（§4.3）**：探测时发现并修掉了两个真实绕过——
+  硬链接可以读写数据库（等于容器内自行提权）、`<db>.tmp` 符号链接可以让
+  uvroot 把内容写到宿主任意文件。修复后 36 项专测全绿，且数据库宿主权限
+  由 0644 收紧为 0600。
 * **净收益**：修掉上游 **aarch64 `faccessat2` 缺失**（这会让 **所有** ARM PRoot 用户
   的 glibc 容器里 `apt` 直接不可用）；定位并卡住 **NDK 构建产物的 tar 相对路径解包缺陷**
   （决定 glibc 容器能否装包），留了最小复现与完整排除矩阵。
