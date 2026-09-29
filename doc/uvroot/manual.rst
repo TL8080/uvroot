@@ -360,7 +360,7 @@ and ``rename`` keep the database in sync, and it is written back
 atomically.  For a local rootfs it is stored as *root*/.uvroot-vperm; a
 netfs root lives in a temporary cache, so its database is kept outside
 of it.  A database left behind under a pre-rename name
-(``.proot-vperm`` or ``.nvroot.vperm``) is taken over automatically.
+(``.proot-vperm``) is taken over automatically.
 
 --vperm-nosu
     Do not expose the virtual su/sudo programs.

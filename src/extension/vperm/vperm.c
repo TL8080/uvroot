@@ -67,12 +67,11 @@
 #define VPERM_DB_NAME		".uvroot-vperm"
 
 /*
- * Database names used by earlier releases, most recent first.  They are
- * taken over when the current name is absent, so that a rootfs that was
- * set up before the renames keeps its recorded virtual ownership.
+ * Database name used by upstream PRoot.  It is taken over when the
+ * current name is absent, so that a rootfs set up for PRoot keeps its
+ * recorded virtual ownership.
  */
 static const char *const vperm_db_legacy[] = {
-    ".nvroot.vperm",
     ".proot-vperm",
     NULL,
 };

@@ -96,6 +96,13 @@ Added
   whole-subtree entry relocation on directory renames, and the metadata
   database is now filtered out of directory listings.
 
+Changed
+~~~~~~~
+
+- ``vperm`` no longer takes over the interim ``.nvroot.vperm`` database
+  name; only upstream PRoot's ``.proot-vperm`` is migrated to
+  ``.uvroot-vperm``.
+
 5.4.1 - 2026-09-07
 ------------------
 

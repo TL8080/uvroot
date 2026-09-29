@@ -598,8 +598,7 @@ Based on PRoot, Copyright (C) 2015 STMicroelectronics.",
 \tmainly useful to keep the database outside a netfs root, where it\n\
 \twould otherwise be mirrored to the server.  Without this option a\n\
 \tlocal rootfs uses *root*/.uvroot-vperm, and a database left behind\n\
-\tunder the pre-rename names .proot-vperm or .nvroot.vperm is taken\n\
-\tover automatically.",
+\tunder the pre-rename name .proot-vperm is taken over automatically.",
 		 },
 		{.class = "Virtual permission options",
 		 .arguments = {

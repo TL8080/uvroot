@@ -76,9 +76,6 @@ echo "== legacy database is taken over =="
 rm -f "$R/.uvroot-vperm"; printf '700 0 0\tdata.txt\n' > "$R/.proot-vperm"
 ok "upstream name loaded"  "$(vp /usr/bin/stat -c %u /data.txt)" "0"
 ok "upstream name renamed" "$(test -f "$R/.uvroot-vperm" && test ! -e "$R/.proot-vperm" && echo yes)" "yes"
-rm -f "$R/.uvroot-vperm"; printf '700 0 0\tdata.txt\n' > "$R/.nvroot.vperm"
-ok "interim name loaded"   "$(vp /usr/bin/stat -c %u /data.txt)" "0"
-ok "interim name renamed"  "$(test -f "$R/.uvroot-vperm" && test ! -e "$R/.nvroot.vperm" && echo yes)" "yes"
 
 echo "== virtual su/sudo (switchable mapping directory) =="
 MP=/tmp/vperm-test/map

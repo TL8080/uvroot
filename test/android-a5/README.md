@@ -187,7 +187,7 @@ env -u LD_LIBRARY_PATH $PREFIX/glibc/bin/aarch64-linux-gnu-gcc -O2 probe.c
 
 | 用例 | 覆盖 | 结果 |
 |---|---|---|
-| `cases/61-vperm-device.sh` | 虚拟 uid/gid/mode 数据库、宿主元数据不变、权限放行/拒绝、祖先 x 与父目录 w、`/etc/passwd` 读写、su/sudo 虚拟身份、shim 保护、setuid 族、跨 id 杀进程、DB 自保护与维护 | **43/43** |
+| `cases/61-vperm-device.sh` | 虚拟 uid/gid/mode 数据库、宿主元数据不变、权限放行/拒绝、祖先 x 与父目录 w、`/etc/passwd` 读写、su/sudo 虚拟身份、shim 保护、setuid 族、跨 id 杀进程、DB 自保护与维护 | **47/47** |
 | `cases/62-readonly-device.sh` | `--ro=<path>` 单绑定锁定、递归与子进程、`--ro=/`、`--read-only`（write/mkdir/unlink/truncate 全拒而读/stat/exec 正常）、id0 也拒、缺失路径仅告警、外部删除后不可重建、不跨运行泄漏 | **32/32** |
 | `cases/63-isolation-bothguests.sh` | 上面两组的核心项在 **Alpine/musl 与 Ubuntu/glibc 两个 guest** 各跑一遍 | **24/24**（12+12） |
 | `cases/64-vperm-db-protection.sh` | **数据库容器内只读性**：读写/追加/截断/删除/重命名(含落到 DB 上)/chmod/chown/等价路径(`/./`、`../`)、符号链接与**硬链接**绕过、`.tmp` 符号链接攻击；以及两条合法写入路径（宿主侧改库生效、uvroot 自身维护落库含换 inode 后仍受保护） | **36/36** |
@@ -436,7 +436,7 @@ bash a5-test/…   # 见下表脚本
 | `44-uvrootdistro.sh` / `45-argform.sh` | 用本 fork 顶替 `uvroot` 跑 proot-distro；校验其参数形式 |
 | `46/47-*.sh` | 装 zig 0.16，交叉 musl/glibc 并在两种 rootfs 下运行 |
 | `48/49/50/51/52-*.sh` | termux-glibc 仓库 → gcc-glibc → `LD_LIBRARY_PATH` 坑 → patchelf 跑通 |
-| `61-vperm-device.sh` | **虚拟用户 vperm** 43 项（§3.2） |
+| `61-vperm-device.sh` | **虚拟用户 vperm** 47 项（§3.2） |
 | `62-readonly-device.sh` | **读写隔离 `--read-only`/`--ro`** 32 项（§3.2） |
 | `63-isolation-bothguests.sh` | 上面两组的核心项在 musl + glibc guest 各跑一遍，24 项（§3.2） |
 | `64-vperm-db-protection.sh` | **vperm 数据库容器内只读性**（含硬链接绕过与 `.tmp` 符号链接攻击），36 项（§4.3） |
