@@ -10,6 +10,57 @@
 
 #include "cli/note.h"
 
+/*
+ * Directory used when neither UVROOT_TMP_DIR nor TMPDIR is set.  A
+ * build can override it at compile time: test/android-a5/build-android-ndk.sh
+ * bakes in "<prefix>/tmp" (e.g. /data/data/com.termux/files/usr/tmp),
+ * because Android/Termux has no "/tmp" at all and requiring
+ * UVROOT_TMP_DIR to be exported by hand would make the resulting binary
+ * unusable out of the box.
+ *
+ * When the compiled-in default does not exist the historical P_tmpdir
+ * fallback is kept, so an unmodified build behaves exactly as before.
+ */
+#ifndef UVROOT_TMP_DIR_DEFAULT
+#define UVROOT_TMP_DIR_DEFAULT P_tmpdir
+#endif
+
+/**
+ * Pick the temporary directory, in decreasing order of precedence:
+ * UVROOT_TMP_DIR, TMPDIR (set by Termux), then @fallback.  Empty
+ * variables are ignored so that "UVROOT_TMP_DIR=" does not silently
+ * select the current directory.
+ *
+ * This is split out from get_temp_directory() so that it can be unit
+ * tested without touching the environment or the file system.
+ */
+const char *pick_temp_directory(const char *uvroot_tmp_dir,
+				const char *tmpdir,
+				const char *fallback)
+{
+    if (uvroot_tmp_dir != NULL && uvroot_tmp_dir[0] != '\0')
+	return uvroot_tmp_dir;
+
+    if (tmpdir != NULL && tmpdir[0] != '\0')
+	return tmpdir;
+
+    return fallback;
+}
+
+/**
+ * Return the compiled-in default temporary directory when it actually
+ * exists, otherwise P_tmpdir.
+ */
+static const char *default_temp_directory()
+{
+    struct stat st;
+
+    if (stat(UVROOT_TMP_DIR_DEFAULT, &st) == 0 && S_ISDIR(st.st_mode))
+	return UVROOT_TMP_DIR_DEFAULT;
+
+    return P_tmpdir;
+}
+
 /**
  * Return the path to a directory where temporary files should be
  * created.
@@ -17,24 +68,26 @@
 const char *get_temp_directory()
 {
     static const char *temp_directory = NULL;
+    const char *fallback;
     char *tmp;
 
     if (temp_directory != NULL)
 	return temp_directory;
 
-    temp_directory = getenv("UVROOT_TMP_DIR");
-    if (temp_directory == NULL) {
-	temp_directory = P_tmpdir;
+    fallback = default_temp_directory();
+    temp_directory = pick_temp_directory(getenv("UVROOT_TMP_DIR"),
+					 getenv("TMPDIR"),
+					 fallback);
+    if (temp_directory == fallback)
 	return temp_directory;
-    }
 
     tmp = realpath(temp_directory, NULL);
     if (tmp == NULL) {
 	note(NULL, WARNING, SYSTEM,
 	     "can't canonicalize %s, using %s instead of UVROOT_TMP_DIR",
-	     temp_directory, P_tmpdir);
+	     temp_directory, fallback);
 
-	temp_directory = P_tmpdir;
+	temp_directory = fallback;
 	return temp_directory;
     }
 

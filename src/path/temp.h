@@ -32,5 +32,8 @@ extern const char *create_temp_file(TALLOC_CTX * context,
 				    const char *prefix);
 extern FILE *open_temp_file(TALLOC_CTX * context, const char *prefix);
 extern const char *get_temp_directory();
+extern const char *pick_temp_directory(const char *uvroot_tmp_dir,
+				       const char *tmpdir,
+				       const char *fallback);
 
 #endif				/* TEMP_H */

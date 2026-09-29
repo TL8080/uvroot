@@ -96,8 +96,10 @@ Manuals
 Environment
 ===========
 
-uvroot must be told where to put its temporary files on systems without
-``/tmp`` (Android/Termux)::
+Without ``/tmp`` (Android/Termux) the temporary directory is selected from
+``UVROOT_TMP_DIR``, then ``TMPDIR``, then a path baked in at build time —
+``test/android-a5/build-android-ndk.sh`` compiles in ``$PREFIX/tmp`` — and
+finally ``/tmp``.  Export it explicitly when none of those fits::
 
     export UVROOT_TMP_DIR=/data/data/com.termux/files/usr/tmp
 

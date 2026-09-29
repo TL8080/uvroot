@@ -102,6 +102,12 @@ Changed
 - ``vperm`` no longer takes over the interim ``.nvroot.vperm`` database
   name; only upstream PRoot's ``.proot-vperm`` is migrated to
   ``.uvroot-vperm``.
+- The temporary directory is now selected from ``UVROOT_TMP_DIR``, then
+  ``TMPDIR``, then a path baked in at build time, and finally ``/tmp``.
+  ``test/android-a5/build-android-ndk.sh`` bakes in ``$PREFIX/tmp`` and
+  passes the git version to ``build.h``, so the cross-built binary works
+  on Android/Termux without ``UVROOT_TMP_DIR`` and still reports
+  ``uvroot --version``.
 
 5.4.1 - 2026-09-07
 ------------------

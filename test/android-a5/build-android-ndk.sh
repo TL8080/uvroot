@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 #
 # Cross-build this uvroot fork for Android/arm64 with the Android NDK, using
-# the Termux libtalloc-static package (aarch64/bionic) as the talloc provider.
+# the Termux libtalloc/libtalloc-static packages (aarch64/bionic) as the
+# talloc provider.
 #
 # Usage:
 #   NDK=/path/to/ndk build-android-ndk.sh [api] [outdir]
 #
-# Produces $OUT/uvroot (aarch64 Android PIE executable).
+# Environment:
+#   TERMUX_PREFIX        on-device prefix (default /data/data/com.termux/files/usr)
+#   UVROOT_TMP_DEFAULT   temporary directory baked into the binary (default
+#                        $TERMUX_PREFIX/tmp; Android/Termux has no /tmp, so
+#                        without this the binary needs UVROOT_TMP_DIR exported)
+#
+# Produces $OUT/uvroot (aarch64 Android PIE executable, talloc linked in
+# statically so the file can be copied to a device on its own).
 #
 set -euo pipefail
 
@@ -17,6 +25,8 @@ REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
 MIRROR="${USTC_TERMUX:-https://mirrors.ustc.edu.cn/termux/apt/termux-main}"
 TALLOC_VER=2.4.3
+TERMUX_PREFIX="${TERMUX_PREFIX:-/data/data/com.termux/files/usr}"
+UVROOT_TMP_DEFAULT="${UVROOT_TMP_DEFAULT:-$TERMUX_PREFIX/tmp}"
 
 log() { printf '\033[1m==> %s\033[0m\n' "$*"; }
 
@@ -81,14 +91,27 @@ unset PKG_CONFIG_PATH PKG_CONFIG_SYSROOT_DIR PKG_CONFIG_LIBDIR 2>/dev/null || tr
 log "copying sources to a clean tree and building"
 SRC="$WORK/src"
 mkdir -p "$SRC"
-tar -C "$REPO" -cf - --exclude=.git --exclude=m2 --exclude='*.o' \
-    --exclude=src/uvroot --exclude=src/care src lib doc contrib \
+tar -C "$REPO" -cf - --exclude=.git --exclude=m2 --exclude='*.o' --exclude='*.d' \
+    --exclude='*.res' --exclude=src/uvroot --exclude=src/care \
+    --exclude=src/build.h \
+    --exclude=src/.check_process_vm --exclude=src/.check_seccomp_filter \
+    --exclude=src/loader/loader --exclude=src/loader/loader-m32 \
+    src lib doc contrib \
     AUTHORS COPYING CHANGELOG.rst README.rst 2>/dev/null | tar -C "$SRC" -xf -
+
+VERSION="$(git -C "$REPO" describe --tags --always 2>/dev/null || true)"
+
+# Android/Termux has no /tmp: bake the device-side temp directory into the
+# binary so UVROOT_TMP_DIR does not have to be exported at run time.  Passed
+# through the environment (not on make's command line) so the Makefile's own
+# "CPPFLAGS +=" keep applying.
+export CPPFLAGS="-DUVROOT_TMP_DIR_DEFAULT=\\\"$UVROOT_TMP_DEFAULT\\\""
 
 mkdir -p "$OUT"
 make -C "$SRC/src" uvroot \
      CROSS_COMPILE="$WRAP/$P" \
-     WITHOUT_PYTHON=1
+     WITHOUT_PYTHON=1 \
+     VERSION="${VERSION:-unknown}"
 
 "$TC/llvm-strip" "$SRC/src/uvroot"
 cp "$SRC/src/uvroot" "$OUT/uvroot"
