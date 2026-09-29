@@ -172,6 +172,12 @@ uvroot --nbd=/:'nbd://host:10809/export' -i 0:0 /bin/sh
 uvroot --multi -r ~/alpine -i 0:0 /bin/sh -- -r ~/alpine -i 0:0 /bin/sh
 ```
 
+> **块设备 / 远程根记得带 `-w /`**：不指定 `-w` 时，uvroot 会把宿主当前目录拿到
+> guest 里做规范化；当根不是宿主上的某个目录（`--img=/:`、`--iscsi=/:`、`--nbd=/:`、
+> `--qcow2=/:` 等）时该路径必然不存在，于是打印
+> `can't chdir("…") in the guest rootfs` 并回退到 `/`。功能不受影响（容器照常
+> 在 `/` 下启动），加 `-w /` 即可消除提示；目录根只要宿主 cwd 在 guest 内就不会有。
+
 ### 6.3 网络
 
 容器**不虚拟化网络**：容器里跑的程序直接用宿主网络栈。

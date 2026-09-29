@@ -65,6 +65,12 @@ Bind mounts, network/image backends, virtual permissions and read-only roots::
     uvroot -r ~/alpine --vperm --vperm-id=0:0 /bin/sh
     uvroot -r ~/ubuntu -i 0:0 --read-only --ro=/tmp /bin/bash
 
+A disk image or an iSCSI/NBD device used as the guest root
+(``--img=/:...``, ``--iscsi=/:...``) contains none of the host's
+directories, so pass ``-w /`` explicitly: otherwise uvroot warns that the
+inherited working directory does not exist in the guest and falls back to
+``/``.
+
 On Android/Termux there is no ``/tmp``, so set ``UVROOT_TMP_DIR``; see
 `CHANGES-vs-PRoot.md <CHANGES-vs-PRoot.md>`_ section 6.4.
 

@@ -116,7 +116,13 @@ Regular options
     ``/host-rootfs`` in the guest environment.
 
 -w path, --pwd=path, --cwd=path
-    Set the initial working directory to *path*.
+    Set the initial working directory to *path*.  Without this option the
+    host's current directory is looked up inside the guest rootfs and,
+    when it is not there, uvroot warns ``can't chdir(...)`` and falls
+    back to ``/``.  That is the normal outcome for a guest root that is
+    not a host directory -- a disk image or an iSCSI/NBD device used as
+    the root (``--img=/:...``, ``--iscsi=/:...``) -- so pass ``-w /``
+    explicitly there.
 
     Some programs expect to be launched from a given directory but do
     not perform any ``chdir`` by themselves.  This option avoids the
