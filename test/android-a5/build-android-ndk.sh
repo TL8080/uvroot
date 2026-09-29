@@ -70,6 +70,10 @@ cp "$WORK/y/data/data/com.termux/files/usr/lib/libtalloc.a" "$SYSROOT/usr/lib/"
 # time (libiscsi today; libext2fs/zlib/libcurl/... the same way).  Only the
 # headers are merged: the shared objects are not linked, they have to be on
 # the device.
+#
+# A directory is either the output of a sibling builder (prefix=/usr
+# already) or a tree extracted from Termux .deb packages -- hence the
+# /data/data/com.termux/files/usr -> /usr rewrite below.
 for dep in ${EXTRA_DEPS_DIRS:-}; do
     [ -d "$dep" ] || { echo "EXTRA_DEPS_DIRS: $dep is not a directory" >&2; exit 1; }
     log "adding headers/pkg-config from $dep"
@@ -80,7 +84,9 @@ for dep in ${EXTRA_DEPS_DIRS:-}; do
         [ -e "$pc" ] || continue
         # Requires.private would pull in .pc files that are not in this
         # sysroot; the libraries are dlopen()ed, so only Cflags matter.
-        sed -e '/^Requires/d' "$pc" \
+        sed -e 's#^prefix=.*#prefix=/usr#' \
+            -e 's#/data/data/com.termux/files/usr#/usr#g' \
+            -e '/^Requires/d' "$pc" \
             > "$SYSROOT/usr/lib/pkgconfig/$(basename "$pc")"
     done
 done
