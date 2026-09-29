@@ -181,6 +181,48 @@ env -u LD_LIBRARY_PATH $PREFIX/glibc/bin/aarch64-linux-gnu-gcc -O2 probe.c
 结论：**用这套工具链产出的 musl 与 glibc 二进制，在本 fork 与官方 proot 下行为一致，全部通过。**
 §4.2 的问题只出在“容器内装包（dpkg→tar 相对路径解包）”这条路径上。
 
+### 3.2 虚拟用户（vperm）与读写隔离（--read-only / --ro）实测
+
+板子上另跑了三组隔离用例，共 **99 项全绿**（musl 与 glibc guest 都覆盖）：
+
+| 用例 | 覆盖 | 结果 |
+|---|---|---|
+| `cases/61-vperm-device.sh` | 虚拟 uid/gid/mode 数据库、宿主元数据不变、权限放行/拒绝、祖先 x 与父目录 w、`/etc/passwd` 读写、su/sudo 虚拟身份、shim 保护、setuid 族、跨 id 杀进程、DB 自保护与维护 | **43/43** |
+| `cases/62-readonly-device.sh` | `--ro=<path>` 单绑定锁定、递归与子进程、`--ro=/`、`--read-only`（write/mkdir/unlink/truncate 全拒而读/stat/exec 正常）、id0 也拒、缺失路径仅告警、外部删除后不可重建、不跨运行泄漏 | **32/32** |
+| `cases/63-isolation-bothguests.sh` | 上面两组的核心项在 **Alpine/musl 与 Ubuntu/glibc 两个 guest** 各跑一遍 | **24/24**（12+12） |
+
+关键证据（宿主侧独立核对，不由 guest 自证）：
+
+```
+# guest 内 chown/chmod 之后
+guest stat: 700 1234:5678          <- vperm 数据库里的虚拟值
+host  stat: 644 10117:10117        <- 宿主元数据一个字节都没动
+```
+
+访问控制与进程隔离（同样实测）：
+
+| 场景 | 结果 |
+|---|---|
+| 非属主（id 1000）读 0700 文件 | `Permission denied` |
+| 属主（id 1234）/ 虚拟 root（0:0） | 读到内容 |
+| 虚拟 root 下 `sleep` 子进程，被降到 id 1000 的进程 `kill -9` | 拒绝（`setid` 返回 EPERM），进程存活 |
+| 同 id 杀自己 | 允许 |
+| `--read-only` 下 id0 写 | 拒绝（`--ro`/`--read-only` 对任何身份一视同仁）|
+| 被 `--ro` 锁定的路径从宿主侧删除后，容器内重建 | 拒绝，且文件确实没回来 |
+
+> 设备侧适配要点（写用例时踩到的坑，已固化进脚本）：
+> 1. **guest 的 `PATH` 必须显式设置**——继承来的是 Termux 的 `PATH`，在容器里指向
+>    不存在的 `/data/data/...`，busybox 会 `chmod: not found`。
+> 2. 宿主版 `test-vperm.sh` 把宿主 `/bin,/usr,/lib,/etc` 绑进空 rootfs，Android 上不可用
+>    （宿主是 Android 根），改用 **Alpine minirootfs 副本**做 guest。
+> 3. Alpine 的 `id` 在 **`/usr/bin/id`**（不是 `/bin/id`）；`/bin/sh` 是指向
+>    `/bin/busybox` 的**绝对符号链接**，所以 `[ -x ]`/`[ -e ]` 会在宿主侧解析失败，
+>    判断 guest 可用性要 `[ -e ] || [ -L ]`。
+> 4. 后台 `sleep` 必须重定向 fd，否则它会攥住命令替换的管道导致结果丢失（曾误报
+>    “跨 id 杀进程没有被拒绝”）。
+> 5. `test-image-guard.sh` 的 `--ro` 部分用 ext4 镜像 + `debugfs`，板子上没有 loop/ext4
+>    工具链，改用**普通目录 + `-b` 绑定**，并从宿主侧核对文件是否真的没被创建。
+
 ---
 
 ## 4. 发现的问题
@@ -331,6 +373,9 @@ bash a5-test/…   # 见下表脚本
 | `44-uvrootdistro.sh` / `45-argform.sh` | 用本 fork 顶替 `uvroot` 跑 proot-distro；校验其参数形式 |
 | `46/47-*.sh` | 装 zig 0.16，交叉 musl/glibc 并在两种 rootfs 下运行 |
 | `48/49/50/51/52-*.sh` | termux-glibc 仓库 → gcc-glibc → `LD_LIBRARY_PATH` 坑 → patchelf 跑通 |
+| `61-vperm-device.sh` | **虚拟用户 vperm** 43 项（§3.2） |
+| `62-readonly-device.sh` | **读写隔离 `--read-only`/`--ro`** 32 项（§3.2） |
+| `63-isolation-bothguests.sh` | 上面两组的核心项在 musl + glibc guest 各跑一遍，24 项（§3.2） |
 
 ## 7. 结论
 
@@ -343,6 +388,11 @@ bash a5-test/…   # 见下表脚本
 * **不依赖容器包管理器的独立验证**（§3.1）：zig 产出的 musl 二进制、zig gnu.2.39 与
   Termux `gcc-glibc` 产出的 glibc 动态/静态二进制，在对应 rootfs 下**全部通过**，
   且与官方 proot 行为一致 —— 说明 uvroot 对两种 libc 的加载/系统调用路径本身没问题。
+* **隔离能力（§3.2）**：**虚拟用户与读写隔离在板子上 99 项全绿**，
+  且 musl 与 glibc guest 结果一致。最关键的一条是**隔离是真实的**：
+  guest 里 `chown`/`chmod` 之后，宿主侧 `stat` 仍是 `644 10117:10117`，
+  虚拟身份只活在 `.uvroot-vperm` 数据库里；`--ro`/`--read-only` 连 id0 都拒，
+  但读/`stat`/`exec` 不受影响。
 * **净收益**：修掉上游 **aarch64 `faccessat2` 缺失**（这会让 **所有** ARM PRoot 用户
   的 glibc 容器里 `apt` 直接不可用）；定位并卡住 **NDK 构建产物的 tar 相对路径解包缺陷**
   （决定 glibc 容器能否装包），留了最小复现与完整排除矩阵。
