@@ -211,14 +211,25 @@ built-in ext2/3/4 driver, so the ownership and permission bits stored in
 the filesystem inside the disk are the ones reported to and enforced on
 the guest; no ``.uvroot-vperm`` database is used for them.  The virtual
 permission layer is nevertheless enabled automatically for such a mount.
-The optional libraries (libcurl, libsmbclient, libnfs, libnbd, libiscsi,
-libext2fs, zlib) are resolved with ``dlopen()``; a backend whose library
-is missing reports that it is not available in this build, and the others
-still work.  Their location can be forced with ``UVROOT_NETFS_LIBCURL``,
-``UVROOT_NETFS_LIBNFS``, ``UVROOT_NETFS_LIBNBD``, ``UVROOT_NETFS_LIBISCSI``
-and ``UVROOT_NETFS_ZLIB``; ``UVROOT_NETFS_ISCSI_INITIATOR`` sets the iSCSI
-initiator IQN and ``UVROOT_NETFS_FORCE_CUSTOM_IO`` forces raw images
-through the generic block ``io_manager`` (a debugging aid).
+The optional libraries are resolved with ``dlopen()``, never linked, so a
+backend whose library is missing only reports that it is not available and
+the others keep working.  The file names tried are ``libcurl.so.4`` and
+``libcurl.so`` (``ftp://``, ``ftps://``, ``ftpes://``, ``sftp://``),
+``libsmbclient.so.0`` and ``libsmbclient.so`` (``smb://``, ``cifs://``),
+``libnfs.so.16`` and ``libnfs.so`` (``nfs://``), ``libnbd.so.0`` and
+``libnbd.so`` (``nbd://``), ``libiscsi.so.11``, ``libiscsi.so.0`` and
+``libiscsi.so`` (``iscsi://``), ``libz.so.1`` and ``libz.so`` (compressed
+QCOW2 clusters) and ``libext2fs.so.2`` / ``libext2fs.so`` (the ext2/3/4
+driver behind ``--img``/``--raw``/``--file``).  For libcurl, libsmbclient,
+libnfs, libnbd and libiscsi, ``$PREFIX/lib/<name>.so`` is tried before
+those names when the ``PREFIX`` environment variable is set (Termux).  The
+location can be forced with
+``UVROOT_NETFS_LIBCURL``, ``UVROOT_NETFS_LIBSMBCLIENT``,
+``UVROOT_NETFS_LIBNFS``, ``UVROOT_NETFS_LIBNBD``,
+``UVROOT_NETFS_LIBISCSI`` and ``UVROOT_NETFS_ZLIB`` (libext2fs takes no
+override); ``UVROOT_NETFS_ISCSI_INITIATOR`` sets the iSCSI initiator IQN
+and ``UVROOT_NETFS_FORCE_CUSTOM_IO`` forces raw images through the generic
+block ``io_manager`` (a debugging aid).
 
 The filesystem inside a block image has a single driver: the first
 process that opens it.  Any other process that wants the same image

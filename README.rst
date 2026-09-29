@@ -83,9 +83,48 @@ Cross-compiling for Android/arm64 with the Android NDK is covered in
 Dependencies
 ============
 
-- `libarchive <https://libarchive.org>`_
-- `libtalloc <https://talloc.samba.org>`_
-- `uthash <https://troydhanson.github.io/uthash>`_ (only required for building CARE)
+Linked into the build:
+
+- `libtalloc <https://talloc.samba.org>`_ — required by uvroot
+- `libarchive <https://libarchive.org>`_ — only for CARE
+- `uthash <https://troydhanson.github.io/uthash>`_ — only for CARE
+
+User-mode I/O drivers
+---------------------
+
+The ``netfs`` drivers are not linked against their libraries: each is
+resolved with ``dlopen()`` when its option is used, so uvroot keeps working
+where they are missing (that driver then reports it is not available, the
+rest is unaffected).  For libcurl, libsmbclient, libnfs, libnbd and
+libiscsi, ``$PREFIX/lib/<name>.so`` is tried first when ``PREFIX`` is set,
+as Termux does.
+
+- ``--ftp``, ``--ftps``, ``--sftp`` (``ftp://``, ``ftps://``, ``ftpes://``,
+  ``sftp://``) — **libcurl**, tried as ``libcurl.so.4``, ``libcurl.so``;
+  override with ``UVROOT_NETFS_LIBCURL``.
+- ``--smb`` (``smb://``, ``cifs://``) — **libsmbclient**, tried as
+  ``libsmbclient.so.0``, ``libsmbclient.so``; ``UVROOT_NETFS_LIBSMBCLIENT``.
+- ``--nfs`` (``nfs://``) — **libnfs**, tried as ``libnfs.so.16``,
+  ``libnfs.so``; ``UVROOT_NETFS_LIBNFS``.
+- ``--img``, ``--raw``, ``--file`` (``img://``, ``raw://``, ``file://``) —
+  **libext2fs** for the ext2/3/4 driver, tried as ``libext2fs.so.2``,
+  ``libext2fs.so`` (no override variable).
+- ``--nbd`` (``nbd://``, ``nbd+unix://``, ``nbds://``) — **libnbd**, tried
+  as ``libnbd.so.0``, ``libnbd.so``; ``UVROOT_NETFS_LIBNBD``.
+- ``--iscsi`` (``iscsi://``) — **libiscsi**, tried as ``libiscsi.so.11``,
+  ``libiscsi.so.0``, ``libiscsi.so``; ``UVROOT_NETFS_LIBISCSI``.
+- ``--qcow2`` compressed clusters — **zlib**, tried as ``libz.so.1``,
+  ``libz.so``; ``UVROOT_NETFS_ZLIB``.
+
+At build time the Makefile probes ``pkg-config`` for ``libcurl``,
+``smbclient``, ``ext2fs``, ``libnbd``, ``libiscsi``, ``libnfs`` and
+``zlib``; a driver is only compiled when those headers are present,
+otherwise it becomes a stub that reports the feature as unavailable.
+
+On Termux the libraries come from ``libcurl``, ``samba`` (which provides
+``libsmbclient``), ``libnfs``, ``e2fsprogs`` (which provides
+``libext2fs``) and ``zlib``; ``libnbd`` and ``libiscsi`` are not packaged
+there.
 
 Manuals
 =======

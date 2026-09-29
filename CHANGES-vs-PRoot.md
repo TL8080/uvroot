@@ -203,7 +203,7 @@ PATH=~/bin-ours:$PATH proot-distro login alpine
 | `UVROOT_NO_SECCOMP` | 关闭 seccomp 加速（纯 ptrace） |
 | `UVROOT_IGNORE_MISSING_BINDINGS` | `-b` 源不存在时不报错 |
 | `UVROOT_FORCE_KOMPAT` / `UVROOT_FORCE_FOREIGN_BINARY` | 强制兼容/外部二进制处理 |
-| `UVROOT_NETFS_*` | 后端选择与调优（`UVROOT_NETFS_LIBCURL`、`_CACHE`、`_INSECURE`、`_ISCSI_INITIATOR`、`_ZLIB`、`_NO_LOCK`、`_ALLOW_REMOTE_ROOT`、`_TAKEOVER`、`_SSH_KNOWN_HOSTS` …） |
+| `UVROOT_NETFS_*` | 后端选择与调优（库路径 `UVROOT_NETFS_LIBCURL`、`_LIBSMBCLIENT`、`_LIBNFS`、`_LIBNBD`、`_LIBISCSI`、`_ZLIB`；调优 `_CACHE`、`_INSECURE`、`_ISCSI_INITIATOR`、`_NO_LOCK`、`_ALLOW_REMOTE_ROOT`、`_TAKEOVER`、`_SSH_KNOWN_HOSTS` …） |
 
 ---
 
@@ -211,10 +211,22 @@ PATH=~/bin-ours:$PATH proot-distro login alpine
 
 1. **`tar` 相对路径解包**（见 §3）——影响 `dpkg`/`apt-get install`。
    绕法：`tar -C <dir>` 显式指定目标目录；或用 Termux 官方 `proot` 装包。
-2. **可选后端需自行提供库**：`libcurl` / `libsmbclient` / `libnfs` / `libnbd` /
-   `libiscsi` / `libext2fs` / `zlib` 在**构建时**由 pkg-config 探测，运行时 `dlopen`。
-   未探测到则对应 `--ftp/--smb/--nfs/--nbd/--iscsi/--img` 不可用（其余功能不受影响）。
-   NDK 交叉编译默认**不带**这些库。
+2. **可选后端需自行提供库**：构建时由 pkg-config 探测 `libcurl` / `smbclient` /
+   `ext2fs` / `libnbd` / `libiscsi` / `libnfs` / `zlib`，缺少头文件时该后端编成 stub；
+   运行时 `dlopen` 下列文件名（libcurl/libsmbclient/libnfs/libnbd/libiscsi 在设了
+   `PREFIX` 时先试 `$PREFIX/lib/<name>.so`）：
+   - FTP/FTPS/SFTP → **libcurl**：`libcurl.so.4`、`libcurl.so`（覆盖变量 `UVROOT_NETFS_LIBCURL`）
+   - SMB/CIFS → **libsmbclient**：`libsmbclient.so.0`、`libsmbclient.so`（`UVROOT_NETFS_LIBSMBCLIENT`）
+   - NFS → **libnfs**：`libnfs.so.16`、`libnfs.so`（`UVROOT_NETFS_LIBNFS`）
+   - img/raw/file（ext2/3/4）→ **libext2fs**：`libext2fs.so.2`、`libext2fs.so`（无覆盖变量）
+   - NBD → **libnbd**：`libnbd.so.0`、`libnbd.so`（`UVROOT_NETFS_LIBNBD`）
+   - iSCSI → **libiscsi**：`libiscsi.so.11`、`libiscsi.so.0`、`libiscsi.so`（`UVROOT_NETFS_LIBISCSI`）
+   - QCOW2 压缩簇 → **zlib**：`libz.so.1`、`libz.so`（`UVROOT_NETFS_ZLIB`）
+
+   未探测到则对应 `--ftp/--smb/--nfs/--nbd/--iscsi/--img`（以及 QCOW2 压缩簇）不可用，
+   其余功能不受影响；NDK 交叉编译默认**不带**这些库。
+   Termux 包名：`libcurl`、`samba`（提供 libsmbclient）、`libnfs`、`e2fsprogs`（提供 libext2fs）、
+   `zlib`；`libnbd` / `libiscsi` 官方源未打包。
 3. **`-0/--root-id` 已移除**，现存脚本需改为 `-i 0:0`。
 
 ---
