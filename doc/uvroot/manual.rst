@@ -351,12 +351,16 @@ root may only signal processes of its own identity.  ``kill``, ``tkill``,
 host kernel cannot tell the virtual identities apart -- every guest
 process really runs as the same host user.
 
-The database is validated when the container starts: entries whose path
-no longer exists are dropped and the previous database is kept next to
-it with a ``.bak`` suffix.  File creation, ``unlink``, ``rmdir`` and
-``rename`` keep it in sync, and it is written back atomically.  For a
-local rootfs it is stored as *root*/.uvroot-vperm; a netfs root lives in
-a temporary cache, so its database is kept outside of it.
+The database is loaded when the container starts; a database that cannot
+be read or that contains an unexpected entry stops uvroot instead of
+being silently ignored.  Removing a path keeps its entry, and creating
+that path again refreshes the entry: the recorded virtual owner is kept
+and the permission bits come from the creation.  ``unlink``, ``rmdir``
+and ``rename`` keep the database in sync, and it is written back
+atomically.  For a local rootfs it is stored as *root*/.uvroot-vperm; a
+netfs root lives in a temporary cache, so its database is kept outside
+of it.  A database left behind under a pre-rename name
+(``.proot-vperm`` or ``.nvroot.vperm``) is taken over automatically.
 
 --vperm-nosu
     Do not expose the virtual su/sudo programs.

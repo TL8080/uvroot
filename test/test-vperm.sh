@@ -50,13 +50,35 @@ vp /bin/mv /sub /sub2 >/dev/null
 ok "rename relocates tree" "$(grep -c 'sub2/f.txt' "$R/.uvroot-vperm")" "1"
 ok "rename removes old"    "$(grep -c 'sub/f.txt' "$R/.uvroot-vperm")" "0"
 vp /bin/rm -f /data.txt >/dev/null
-ok "unlink drops entry"    "$(grep -c 'data.txt' "$R/.uvroot-vperm")" "0"
+ok "unlink keeps entry"    "$(grep -c 'data.txt' "$R/.uvroot-vperm")" "1"
 
-echo "== startup validation =="
-printf '700 1 1\tghost.txt\n' >> "$R/.uvroot-vperm"
-vp /bin/true >/dev/null
-ok "stale entry dropped" "$(grep -c 'ghost.txt' "$R/.uvroot-vperm")" "0"
-ok "backup written"      "$(test -f "$R/.uvroot-vperm.bak" && echo yes)" "yes"
+echo "== sticky entries: kept while gone, refreshed when recreated =="
+vp /bin/sh -c 'chown 1234:5678 /data.txt; chmod 640 /data.txt' >/dev/null
+vp /bin/rm -f /data.txt >/dev/null
+ok "entry survives unlink" "$(grep -c 'data.txt' "$R/.uvroot-vperm")" "1"
+ok "no .bak written"       "$(test -f "$R/.uvroot-vperm.bak" && echo yes || echo no)" "no"
+vp /bin/sh -c 'umask 0; echo new > /data.txt' >/dev/null
+ok "sticky owner kept"     "$(vp /usr/bin/stat -c %u:%g /data.txt)" "1234:5678"
+ok "mode from creation"    "$(vp /usr/bin/stat -c %a /data.txt)" "666"
+ok "entry refreshed"       "$(grep -P '\tdata\.txt$' "$R/.uvroot-vperm" | awk '{print $1, $2, $3}')" "100666 1234 5678"
+
+echo "== damaged database stops uvroot =="
+cp "$R/.uvroot-vperm" /tmp/vperm-test/keep.db
+printf 'this is not an entry\n' > "$R/.uvroot-vperm"
+if "$UVROOT" -r "$R" $BINDS --vperm /bin/true >/dev/null 2>&1; then
+    ok "damaged db refused" "started" "refused"
+else
+    ok "damaged db refused" "refused" "refused"
+fi
+cp /tmp/vperm-test/keep.db "$R/.uvroot-vperm"
+
+echo "== legacy database is taken over =="
+rm -f "$R/.uvroot-vperm"; printf '700 0 0\tdata.txt\n' > "$R/.proot-vperm"
+ok "upstream name loaded"  "$(vp /usr/bin/stat -c %u /data.txt)" "0"
+ok "upstream name renamed" "$(test -f "$R/.uvroot-vperm" && test ! -e "$R/.proot-vperm" && echo yes)" "yes"
+rm -f "$R/.uvroot-vperm"; printf '700 0 0\tdata.txt\n' > "$R/.nvroot.vperm"
+ok "interim name loaded"   "$(vp /usr/bin/stat -c %u /data.txt)" "0"
+ok "interim name renamed"  "$(test -f "$R/.uvroot-vperm" && test ! -e "$R/.nvroot.vperm" && echo yes)" "yes"
 
 echo "== virtual su/sudo (switchable mapping directory) =="
 MP=/tmp/vperm-test/map

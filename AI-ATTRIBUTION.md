@@ -21,7 +21,8 @@
    - 二进制 `proot` → `uvroot`，源文件 `cli/proot.{c,h}` → `cli/uvroot.{c,h}`，
      `extension/python/proot.i` → `uvroot.i`，`doc/proot/` → `doc/uvroot/`
    - 环境变量 `PROOT_*` → `UVROOT_*`（共 24 个，未保留旧名兼容）
-   - 运行时数据 `.proot-vperm` → `.uvroot-vperm` 等
+   - 运行时数据 `.proot-vperm` → `.uvroot-vperm`（上游旧名 `.proot-vperm`
+     会被自动接管）
 2. **文档**：`README.rst` 重写（上游署名/链接保留）、本文件、
    [`CHANGES-vs-PRoot.md`](CHANGES-vs-PRoot.md)、Android/NDK 实测报告
    `test/android-a5/README.md`

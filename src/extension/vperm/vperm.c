@@ -64,7 +64,18 @@
 #include "tracee/reg.h"
 #include "arch.h"
 
-#define VPERM_DB_NAME	".uvroot-vperm"
+#define VPERM_DB_NAME		".uvroot-vperm"
+
+/*
+ * Database names used by earlier releases, most recent first.  They are
+ * taken over when the current name is absent, so that a rootfs that was
+ * set up before the renames keeps its recorded virtual ownership.
+ */
+static const char *const vperm_db_legacy[] = {
+    ".nvroot.vperm",
+    ".proot-vperm",
+    NULL,
+};
 
 /* Linux directory entry layouts, as seen by the tracee.  */
 typedef struct VpermDirent64 {
@@ -130,6 +141,11 @@ typedef struct VpermTracee {
     VpermRoot *pend_root;
     bool pend_valid;
 
+    /* The host path did not exist when the syscall was entered: a
+     * successful open(O_CREAT) therefore created a new object, and a
+     * stale entry for that path has to be refreshed.  */
+    bool pend_absent;
+
     /* Destination of a rename, and the entry it carries over.  */
     char pend_new_rel[PATH_MAX];
     VpermRoot *pend_new_root;
@@ -184,6 +200,7 @@ typedef struct VpermConfig {
     gid_t gid;
     char *explicit_db;
     bool built;
+    int build_status;		/* cached result of roots_build() */
 
     /* Switchable mapping directory: users.conf plus the generated
      * su/sudo shims that get bound into the container.  */
@@ -304,20 +321,6 @@ static VpermEntry *entry_get(VpermRoot *root, const char *rel, bool create)
     entry->next = root->entries;
     root->entries = entry;
     return entry;
-}
-
-static void entry_remove(VpermRoot *root, const char *rel)
-{
-    VpermEntry **link;
-
-    for (link = &root->entries; *link != NULL; link = &(*link)->next) {
-	if (strcmp((*link)->path, rel) == 0) {
-	    VpermEntry *entry = *link;
-	    *link = entry->next;
-	    talloc_free(entry);
-	    return;
-	}
-    }
 }
 
 /*
@@ -527,16 +530,34 @@ static int db_save(VpermRoot *root)
     return 0;
 }
 
-static void db_load(VpermRoot *root)
+/*
+ * Load the database.  A missing one is created empty; one that cannot be
+ * read, or that contains anything unexpected, is fatal.  Silently
+ * skipping a damaged entry would drop the virtual ownership it records,
+ * so uvroot refuses to start instead.
+ */
+static int db_load(Tracee *tracee, VpermRoot *root)
 {
     char line[PATH_MAX * 4];
     FILE *file;
+    unsigned int lineno = 0;
 
     root->loaded = true;
 
     file = fopen(root->db, "r");
-    if (file == NULL)
-	return;
+    if (file == NULL) {
+	if (errno == ENOENT) {
+	    /* "There is one? use it.  None? create it."  A read-only
+	     * root cannot hold a database, so a failure here is not
+	     * fatal: the entries just stay in memory.  */
+	    (void) db_save(root);
+	    return 0;
+	}
+
+	note(tracee, ERROR, USER, "vperm: cannot read %s: %s",
+	     root->db, strerror(errno));
+	return -errno;
+    }
 
     while (fgets(line, sizeof(line), file) != NULL) {
 	unsigned mode;
@@ -548,12 +569,33 @@ static void db_load(VpermRoot *root)
 	VpermEntry *entry;
 	int consumed = 0;
 
+	lineno++;
+
+	/* A line that does not fit in the buffer is truncated data.  */
+	if (strchr(line, '\n') == NULL && !feof(file)) {
+	    note(tracee, ERROR, USER, "vperm: %s:%u: line too long",
+		 root->db, lineno);
+	    fclose(file);
+	    return -EINVAL;
+	}
+
 	if (line[0] == '#' || line[0] == '\n')
 	    continue;
 
 	if (sscanf(line, "%o %u %u%n", &mode, &uid, &gid, &consumed) != 3
-	    || consumed <= 0)
-	    continue;
+	    || consumed <= 0) {
+	    note(tracee, ERROR, USER,
+		 "vperm: %s:%u: malformed entry", root->db, lineno);
+	    fclose(file);
+	    return -EINVAL;
+	}
+
+	if ((mode & ~(unsigned) (S_IFMT | 07777)) != 0) {
+	    note(tracee, ERROR, USER, "vperm: %s:%u: invalid mode %o",
+		 root->db, lineno, mode);
+	    fclose(file);
+	    return -EINVAL;
+	}
 
 	/* The separator is a tab, but tolerate spaces too so that a
 	 * hand-edited database is not silently ignored.  */
@@ -566,12 +608,18 @@ static void db_load(VpermRoot *root)
 	    *newline = '\0';
 
 	db_unescape(path, decoded, sizeof(decoded));
-	if (decoded[0] == '\0')
-	    continue;
+	if (decoded[0] == '\0' || decoded[0] == '/') {
+	    note(tracee, ERROR, USER, "vperm: %s:%u: invalid path",
+		 root->db, lineno);
+	    fclose(file);
+	    return -EINVAL;
+	}
 
 	entry = entry_get(root, decoded, true);
-	if (entry == NULL)
-	    continue;
+	if (entry == NULL) {
+	    fclose(file);
+	    return -ENOMEM;
+	}
 	entry->mode = (mode_t) mode;
 	entry->uid = (uid_t) uid;
 	entry->gid = (gid_t) gid;
@@ -596,55 +644,14 @@ static void db_load(VpermRoot *root)
 	}
     }
 
+    if (ferror(file)) {
+	note(tracee, ERROR, USER, "vperm: read error on %s", root->db);
+	fclose(file);
+	return -EIO;
+    }
+
     fclose(file);
-}
-
-/*
- * Drop the entries whose path no longer exists, keeping a backup of the
- * database.  Only local roots are validated: a netfs cache only holds
- * the paths that were actually accessed, so an absent path there does
- * not mean it is gone from the server.
- */
-static void db_validate(Tracee *tracee, VpermRoot *root)
-{
-    VpermEntry **link = &root->entries;
-    unsigned int removed = 0;
-
-    if (!root->local || root->fs_backed || root->entries == NULL)
-	return;
-
-    while (*link != NULL) {
-	char full[PATH_MAX];
-	struct stat st;
-	VpermEntry *entry = *link;
-
-	snprintf(full, sizeof(full), "%s/%s", root->host, entry->path);
-
-	if (stat(full, &st) == 0) {
-	    link = &(*link)->next;
-	    continue;
-	}
-
-	*link = entry->next;
-	talloc_free(entry);
-	removed++;
-    }
-
-    if (removed == 0)
-	return;
-
-    note(tracee, WARNING, USER,
-	 "vperm: %u stale entr%s removed from %s (backup: %s.bak)",
-	 removed, removed == 1 ? "y" : "ies", root->db, root->db);
-
-    {
-	char backup[PATH_MAX];
-
-	snprintf(backup, sizeof(backup), "%s.bak", root->db);
-	(void) rename(root->db, backup);
-    }
-
-    (void) db_save(root);
+    return 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1254,27 +1261,27 @@ static void root_db_ident(VpermRoot *root)
     }
 }
 
-static void root_add(Tracee *tracee, VpermConfig *config, const char *host,
-		     const char *guest)
+static int root_add(Tracee *tracee, VpermConfig *config, const char *host,
+		    const char *guest)
 {
     VpermRoot *root;
     char resolved[PATH_MAX];
     const char *canonical = host;
 
     if (host == NULL || host[0] == '\0')
-	return;
+	return 0;
 
     if (realpath(host, resolved) != NULL)
 	canonical = resolved;
 
     for (root = config->roots; root != NULL; root = root->next) {
 	if (strcmp(root->host, canonical) == 0)
-	    return;
+	    return 0;
     }
 
     root = talloc_zero(config, VpermRoot);
     if (root == NULL)
-	return;
+	return -ENOMEM;
 
     root->host = talloc_strdup(root, canonical);
     root->guest = talloc_strdup(root, guest != NULL ? guest : "/");
@@ -1291,43 +1298,92 @@ static void root_add(Tracee *tracee, VpermConfig *config, const char *host,
 
 	if (db == NULL) {
 	    talloc_free(root);
-	    return;
+	    return -ENOMEM;
 	}
 	root->db = talloc_steal(root, db);
     }
 
+    /*
+     * Take over a database left behind under one of the old names.
+     * When the current name is absent and a legacy one exists, move it
+     * so that the recorded virtual ownership is not silently abandoned.
+     * If the move fails (read-only root) the legacy file is used in
+     * place.
+     */
+    if (root->local && !root->fs_backed) {
+	struct stat st;
+
+	if (stat(root->db, &st) != 0 && errno == ENOENT) {
+	    const char *const *legacy;
+
+	    for (legacy = vperm_db_legacy; *legacy != NULL; legacy++) {
+		char old[PATH_MAX];
+
+		if ((size_t) snprintf(old, sizeof(old), "%s/%s",
+				     canonical, *legacy) >= sizeof(old)
+		    || stat(old, &st) != 0)
+		    continue;
+
+		if (rename(old, root->db) != 0) {
+		    char *kept = talloc_strdup(root, old);
+
+		    if (kept != NULL) {
+			note(tracee, WARNING, USER,
+			     "vperm: cannot migrate %s: %s (used in place)",
+			     old, strerror(errno));
+			talloc_free(root->db);
+			root->db = kept;
+		    }
+		}
+		break;
+	    }
+	}
+    }
+
     root_db_rel(root);
     root_db_ident(root);
+
+    if (db_load(tracee, root) < 0) {
+	talloc_free(root);
+	return -EINVAL;
+    }
+
     root->next = config->roots;
     config->roots = root;
-
-    db_load(root);
+    return 0;
 }
 
-static void roots_build(Tracee *tracee, VpermConfig *config)
+static int roots_build(Tracee *tracee, VpermConfig *config)
 {
     const char *root_host;
     const char *guest;
     const char *cache;
     unsigned int i;
+    int status;
 
     if (config->built)
-	return;
+	return config->build_status;
     config->built = true;
+    config->build_status = 0;
 
     root_host = get_root(tracee);
-    if (root_host != NULL)
-	root_add(tracee, config, root_host, "/");
-
-    for (i = 0; netfs_mount_at(tracee, i, &guest, &cache); i++)
-	root_add(tracee, config, cache, guest);
-
-    {
-	VpermRoot *root;
-
-	for (root = config->roots; root != NULL; root = root->next)
-	    db_validate(tracee, root);
+    if (root_host != NULL) {
+	status = root_add(tracee, config, root_host, "/");
+	if (status < 0)
+	    goto fail;
     }
+
+    for (i = 0; netfs_mount_at(tracee, i, &guest, &cache); i++) {
+	status = root_add(tracee, config, cache, guest);
+	if (status < 0)
+	    goto fail;
+    }
+
+    return 0;
+
+fail:
+    config->build_status = status;
+    return status;
 }
 
 static VpermRoot *find_root(VpermConfig *config, const char *host,
@@ -1560,6 +1616,33 @@ static void remember_change(VpermRoot *root, const char *rel, mode_t mode,
     (void) db_save(root);
 }
 
+/*
+ * A path was removed but its entry was kept, and is now being created
+ * again (symlink, hard link): the recorded virtual owner and permission
+ * bits stay, only the object type has to follow what was created.
+ * @type is 0 to take it from the object at @host.
+ */
+static void refresh_entry_type(VpermTracee *state, mode_t type,
+			       const char *host)
+{
+    VpermEntry *entry = entry_find(state->pend_root, state->pend_rel);
+
+    if (entry == NULL)
+	return;
+
+    if (type == 0 && host != NULL) {
+	struct stat st;
+
+	if (lstat(host, &st) == 0)
+	    type = st.st_mode & S_IFMT;
+    }
+
+    if (type != 0)
+	entry->mode = (entry->mode & 07777) | type;
+
+    (void) db_save(state->pend_root);
+}
+
 /* ------------------------------------------------------------------ */
 /* Syscall hooks                                                       */
 /* ------------------------------------------------------------------ */
@@ -1574,6 +1657,7 @@ static int handle_enter_start(Tracee *tracee, VpermConfig *config)
 	return 0;
 
     state->pend_valid = false;
+    state->pend_absent = false;
     state->pend_new_valid = false;
     state->move_valid = false;
     state->last_valid = false;
@@ -1633,7 +1717,8 @@ static int capture_path(Tracee *tracee, VpermConfig *config,
      * so it has to be recognized before the root lookup.  */
     state->pend_protected = vmap_is_protected(config, host);
 
-    roots_build(tracee, config);
+    if (roots_build(tracee, config) < 0)
+	return -EINVAL;
 
     root = find_root(config, host, &rel);
     if (root == NULL)
@@ -1650,6 +1735,15 @@ static int capture_path(Tracee *tracee, VpermConfig *config,
 	 * ownership, which is written into the image.  */
 	netfs_block_set_identity(tracee, state->uid, state->gid);
 	return 0;
+    }
+
+    /* Creation handling needs to know whether this path already
+     * existed, so that a stale entry can be refreshed instead of being
+     * overwritten by the creator's identity.  */
+    {
+	struct stat st;
+
+	state->pend_absent = (lstat(host, &st) != 0 && errno == ENOENT);
     }
 
     if (relative_of(root, host, rel) == NULL)
@@ -1723,6 +1817,16 @@ static int check_access(VpermTracee *state, VpermConfig *config UNUSED, int want
     entry = entry_find(state->pend_root, state->pend_rel);
     if (entry == NULL)
 	return 0;		/* No entry: pass through to the host.  */
+
+    /*
+     * The path does not exist (yet).  A stale entry kept from a
+     * previous life must not veto the creation: that is governed by the
+     * parent directory, and the entry is refreshed once the object is
+     * created again.  For a plain open/access the host then reports
+     * ENOENT, which is the expected answer.
+     */
+    if (state->pend_absent)
+	return 0;
 
     if (perm_allows(entry, state->uid, state->gid, want))
 	return 0;
@@ -2865,17 +2969,12 @@ static int handle_exit_end(Tracee *tracee, VpermConfig *config)
 
     case PR_unlink:
     case PR_rmdir:
-	if ((int) result == 0) {
-	    entry_remove(state->pend_root, state->pend_rel);
-	    (void) db_save(state->pend_root);
-	}
-	break;
-
     case PR_unlinkat:
-	if ((int) result == 0) {
-	    entry_remove(state->pend_root, state->pend_rel);
-	    (void) db_save(state->pend_root);
-	}
+	/*
+	 * The entry is deliberately kept although the path is gone: it
+	 * records the virtual owner of that path, and is refreshed when
+	 * the path is created again.  The database is left untouched.
+	 */
 	break;
 
     case PR_mkdir:
@@ -2885,19 +2984,38 @@ static int handle_exit_end(Tracee *tracee, VpermConfig *config)
 	    : peek_reg(tracee, ORIGINAL, SYSARG_3);
 
 	if ((int) result == 0) {
-	    remember_change(state->pend_root, state->pend_rel, mode, true,
-			    state->uid, true, state->gid, true);
-	    {
-		VpermEntry *entry =
-		    entry_find(state->pend_root, state->pend_rel);
+	    VpermEntry *entry =
+		entry_find(state->pend_root, state->pend_rel);
 
+	    if (entry != NULL) {
+		/* The path already had an entry in a previous life:
+		 * keep the recorded virtual owner, take the permission
+		 * bits from mkdir(2), and make it a directory again.  */
+		entry->mode = S_IFDIR | (mode & 07777);
+	    } else {
+		remember_change(state->pend_root, state->pend_rel,
+				mode, true, state->uid, true,
+				state->gid, true);
+		entry = entry_find(state->pend_root, state->pend_rel);
 		if (entry != NULL)
 		    entry->mode = (entry->mode & 07777) | S_IFDIR;
-		(void) db_save(state->pend_root);
 	    }
+	    (void) db_save(state->pend_root);
 	}
 	break;
     }
+
+    case PR_symlink:
+    case PR_symlinkat:
+	if ((int) result == 0)
+	    refresh_entry_type(state, S_IFLNK, NULL);
+	break;
+
+    case PR_link:
+    case PR_linkat:
+	if ((int) result == 0)
+	    refresh_entry_type(state, 0, state->pend_host);
+	break;
 
     case PR_getdents:
     case PR_getdents64:{
@@ -2947,15 +3065,32 @@ static int handle_exit_end(Tracee *tracee, VpermConfig *config)
 	}
 
 	if ((int) result >= 0) {
-	    bool existed =
-		entry_find(state->pend_root, state->pend_rel) != NULL;
+	    VpermEntry *entry =
+		entry_find(state->pend_root, state->pend_rel);
+	    word_t mode = peek_reg(tracee, ORIGINAL, mode_reg);
 
-	    /* A newly created path becomes an entry owned by the
-	     * container's virtual identity.  */
-	    if (!existed && (flags & O_CREAT) != 0)
+	    if ((flags & O_CREAT) != 0 && state->pend_absent) {
+		if (entry != NULL) {
+		    /* The path was removed but its entry was kept:
+		     * keep the recorded virtual owner, take the
+		     * permission bits from open(2), make it a regular
+		     * file again.  */
+		    entry->mode = S_IFREG | (mode & 07777);
+		} else {
+		    /* A newly created path becomes an entry owned by
+		     * the container's virtual identity.  */
+		    remember_change(state->pend_root, state->pend_rel,
+				    mode, true, state->uid, true,
+				    state->gid, true);
+		}
+		(void) db_save(state->pend_root);
+	    } else if (!state->pend_absent && entry == NULL
+		       && (flags & O_CREAT) != 0) {
+		/* Pre-existing path without an entry yet.  */
 		remember_change(state->pend_root, state->pend_rel,
-				peek_reg(tracee, ORIGINAL, mode_reg), true,
-				state->uid, true, state->gid, true);
+				mode, true, state->uid, true,
+				state->gid, true);
+	    }
 
 	    fd_add(state, (int) result, state->pend_root, state->pend_rel);
 	}
@@ -3164,7 +3299,9 @@ int vperm_callback(Extension *extension, ExtensionEvent event, intptr_t d1,
 	if (state == NULL)
 	    return 0;
 
-	roots_build(tracee, config);
+	if (roots_build(tracee, config) < 0)
+	    return -1;
+
 	root = find_root(config, (const char *) d1, &rel);
 	if (root == NULL || relative_of(root, (const char *) d1, rel) == NULL)
 	    return 0;
@@ -3233,11 +3370,26 @@ int vperm_enable(Tracee *tracee)
 int vperm_finalize(Tracee *tracee)
 {
     Extension *extension = get_extension(tracee, vperm_callback);
+    VpermConfig *config;
 
     if (extension == NULL)
 	return 0;
 
-    vmap_setup(tracee, config_of(extension));
+    config = config_of(extension);
+
+    vmap_setup(tracee, config);
+
+    /*
+     * Load the databases now, before the guest starts: a database that
+     * is unreadable or damaged must stop uvroot rather than let it run
+     * with the virtual ownership silently missing.
+     */
+    if (roots_build(tracee, config) < 0) {
+	note(tracee, ERROR, USER,
+	     "vperm: refusing to start with a damaged database");
+	return -1;
+    }
+
     return 0;
 }
 

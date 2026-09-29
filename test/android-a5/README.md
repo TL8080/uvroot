@@ -366,8 +366,8 @@ $ uvroot -r $R --vperm  /bin/sh -c 'chmod 705 /t/data.txt'   # 触发 db_save
 回归：`cases/64-vperm-db-protection.sh` **36/36**，且 61/62/63 全部保持通过。
 
 **仍然成立的合法写入路径**（用例里都验了）：宿主侧直接改数据库下一次运行即生效；
-uvroot 自身的维护写入（chmod/chown 落库、rename 搬迁、unlink 删条目、启动校验写 `.bak`）
-正常工作，且**换 inode 之后新库依然受保护**。`.bak` 只写不读，被篡改无影响。
+uvroot 自身的维护写入（chmod/chown 落库、rename 搬迁、unlink/rmdir 保留条目、
+创建时按条目刷新归属）正常工作，且**换 inode 之后新库依然受保护**。
 
 ### 4.4 【环境类，已处置】
 

@@ -596,7 +596,10 @@ Based on PRoot, Copyright (C) 2015 STMicroelectronics.",
 		 .detail =
 		 "\tAlso enables the feature.  The path must be absolute.  It is\n\
 \tmainly useful to keep the database outside a netfs root, where it\n\
-\twould otherwise be mirrored to the server.",
+\twould otherwise be mirrored to the server.  Without this option a\n\
+\tlocal rootfs uses *root*/.uvroot-vperm, and a database left behind\n\
+\tunder the pre-rename names .proot-vperm or .nvroot.vperm is taken\n\
+\tover automatically.",
 		 },
 		{.class = "Virtual permission options",
 		 .arguments = {
@@ -628,10 +631,13 @@ Based on PRoot, Copyright (C) 2015 STMicroelectronics.",
 \tupdate the database -- the host metadata is never modified -- and\n\
 \topen(), access() and execve() are checked against the recorded mode.\n\
 \tPaths without an entry keep the host's own metadata.  The database is\n\
-\tvalidated at startup (stale entries are dropped and backed up) and\n\
-\tkept in sync by creation, unlink, rmdir and rename.  For a local\n\
-\trootfs it is stored as *root*/.uvroot-vperm; for a netfs root, whose\n\
-\tcache is temporary, it is kept outside of it (see --vperm-file).",
+\tloaded at startup (a damaged one is fatal) and kept in sync by\n\
+\tcreation, unlink, rmdir and rename.  Removing a path keeps its entry,\n\
+\tand recreating that path refreshes the entry: the recorded virtual\n\
+\towner is kept and the permission bits come from the creation.  For a\n\
+\tlocal rootfs it is stored as *root*/.uvroot-vperm; for a netfs root,\n\
+\twhose cache is temporary, it is kept outside of it (see\n\
+\t--vperm-file).",
 		 },
 		{.class = "Alias options",
 		 .arguments = {

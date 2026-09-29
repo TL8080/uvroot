@@ -43,7 +43,9 @@
 
 - `--vperm`：启用**持久化**虚拟 uid/gid/mode 数据库（`.uvroot-vperm`），
   容器内 `stat/chmod/chown` 只改数据库，**从不改宿主元数据**；
-  `open/access/execve` 按虚拟权限校验。
+  `open/access/execve` 按虚拟权限校验。删除路径保留条目，路径重建时
+  沿用条目里记录的虚拟属主、权限位取自本次创建；数据库损坏则拒绝启动；
+  旧名 `.proot-vperm` / `.nvroot.vperm` 会被自动接管。
 - `--vperm-id=uid:gid`：指定虚拟身份（替代上游的 `-0`）。
 - `--vperm-map=path`：用户映射目录（`users.conf` + 生成的 `su`/`sudo` shim）。
 - `--vperm-file=path`：把数据库放到容器根之外（netfs 根必需）。
@@ -89,7 +91,8 @@ uvroot --multi <容器1 参数> -- <容器2 参数> -- ...
 - **命令名**：`proot` → `uvroot`
 - **环境变量**：`PROOT_TMP_DIR` → `UVROOT_TMP_DIR`，`PROOT_NO_SECCOMP` →
   `UVROOT_NO_SECCOMP`，`PROOT_NETFS_*` → `UVROOT_NETFS_*` ……共 24 个，**不保留旧名**。
-- **运行时数据**：`.proot-vperm` → `.uvroot-vperm`，
+- **运行时数据**：数据库文件名为 `.uvroot-vperm`；rootfs 里遗留的
+  `.proot-vperm` 或 `.nvroot.vperm` 会被自动迁移过来，
   `$XDG_DATA_HOME/proot/vperm` → `$XDG_DATA_HOME/uvroot/vperm`。
 - **`-0` / `--root-id` 不存在**：等价写法 `-i 0:0` 或 `--vperm-id=0:0`。
   注意 `proot-distro` 按名字在 `PATH` 里找 `proot`，当 drop-in 用需要软链（见 §6.4）。
