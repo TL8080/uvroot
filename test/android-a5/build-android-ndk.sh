@@ -12,6 +12,11 @@
 #   UVROOT_TMP_DEFAULT   temporary directory baked into the binary (default
 #                        $TERMUX_PREFIX/tmp; Android/Termux has no /tmp, so
 #                        without this the binary needs UVROOT_TMP_DIR exported)
+#   EXTRA_DEPS_DIRS      space-separated directories with include/ and
+#                        lib/pkgconfig/ for the dlopen-only backends, e.g.
+#                        the output of build-libiscsi-ndk.sh.  Without them
+#                        the matching backend is compiled as a stub that
+#                        reports the feature as unavailable.
 #
 # Produces $OUT/uvroot (aarch64 Android PIE executable, talloc linked in
 # statically so the file can be copied to a device on its own).
@@ -59,6 +64,26 @@ sed 's#^prefix=.*#prefix=/usr#' \
 rm -rf "$WORK/y"; mkdir -p "$WORK/y"
 ( cd "$WORK/y" && ar x "$WORK/libtalloc-static_${TALLOC_VER}_aarch64.deb" && tar xJf data.tar.xz )
 cp "$WORK/y/data/data/com.termux/files/usr/lib/libtalloc.a" "$SYSROOT/usr/lib/"
+
+# ------------------------------------------------- optional extra deps ------
+# Headers and pkg-config files for the backends that are dlopen()ed at run
+# time (libiscsi today; libext2fs/zlib/libcurl/... the same way).  Only the
+# headers are merged: the shared objects are not linked, they have to be on
+# the device.
+for dep in ${EXTRA_DEPS_DIRS:-}; do
+    [ -d "$dep" ] || { echo "EXTRA_DEPS_DIRS: $dep is not a directory" >&2; exit 1; }
+    log "adding headers/pkg-config from $dep"
+    if [ -d "$dep/include" ]; then
+        cp -a "$dep/include/." "$SYSROOT/usr/include/"
+    fi
+    for pc in "$dep/lib/pkgconfig"/*.pc; do
+        [ -e "$pc" ] || continue
+        # Requires.private would pull in .pc files that are not in this
+        # sysroot; the libraries are dlopen()ed, so only Cflags matter.
+        sed -e '/^Requires/d' "$pc" \
+            > "$SYSROOT/usr/lib/pkgconfig/$(basename "$pc")"
+    done
+done
 
 # ----------------------------------------------------------- toolchain ------
 log "wrapping the NDK toolchain for CROSS_COMPILE=<prefix>"

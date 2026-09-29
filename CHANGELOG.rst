@@ -95,6 +95,11 @@ Added
 - Ancestor execute and parent-directory write checks for ``vperm``,
   whole-subtree entry relocation on directory renames, and the metadata
   database is now filtered out of directory listings.
+- ``test/android-a5/build-libiscsi-ndk.sh`` cross-builds libiscsi (the
+  library behind ``--iscsi``) for Android/arm64 with the NDK, and
+  ``build-android-ndk.sh`` grew ``EXTRA_DEPS_DIRS`` so the headers and
+  pkg-config files of such dlopen-only libraries can be merged into its
+  sysroot -- without them the matching backend is compiled as a stub.
 
 Changed
 ~~~~~~~

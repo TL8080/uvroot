@@ -90,6 +90,44 @@ stripped **350 KB**，`NEEDED` 只有 `libdl.so` + `libc.so`（talloc 已静态�
 > 交叉编译的坑：`make -f /path/GNUmakefile` 的 out-of-tree 构建会被 VPATH 里的
 > 现成 x86_64 `src/uvroot` 命中而“已是最新”，必须在干净的源码副本里 in-tree 构建。
 
+### 2.5 NDK 交叉编译 ldopen 后端所依赖的库
+
+`netfs` 的每个驱动在**运行时** `dlopen` 自己的库（见 `README.rst` 的
+“User-mode I/O drivers”一节），库的头文件必须在编译 uvroot 时可见，否则该驱动只
+编成 stub（报 “this build was made without the ... headers”）。脚本：
+
+```bash
+# 1) 交叉编译库，产物含 lib/ + include/ + lib/pkgconfig/（与 make install 同布局）
+NDK=$HOME/Android/Sdk/ndk/27.2.12479018 \
+  test/android-a5/build-libiscsi-ndk.sh 24 /tmp/libiscsi-android
+
+# 2) 把这些头文件/pkg-config 合进 uvroot 的构建 sysroot（可给多个目录，空格分隔）
+EXTRA_DEPS_DIRS=/tmp/libiscsi-android NDK=$HOME/Android/Sdk/ndk/27.2.12479018 \
+  test/android-a5/build-android-ndk.sh 24 /tmp/uvroot-android
+```
+
+`build-libiscsi-ndk.sh` 直接编译上游纯 C 源码（tag 包不带 `configure`，就不引
+autotools）：`-DHAVE_PTHREAD -DHAVE_MULTITHREADING`，**不**开 GnuTLS/libgcrypt
+（用自带 MD5 做 CHAP）、**不**开 iSER/RDMA（不编 `iser.c`）；soname/文件名从
+`lib/Makefile.am` 的 `SOCURRENT/SOREVISION/SOAGE` 推出。1.20.3 实测：
+
+```
+libiscsi.so.11.0.2  (soname libiscsi.so.11)  NEEDED: libdl.so libc.so
+```
+
+设备侧只要库存在即可（不用重编 uvroot）：放到 `$PREFIX/lib/`，或用
+`UVROOT_NETFS_LIBISCSI=<path>`。实测（板子 → `adb reverse tcp:3260 tcp:3260` →
+宿主机 `tgtd` + 16 MB ext4 LUN）：
+
+```
+uvroot info: netfs: iSCSI connected to 127.0.0.1:3260, target iqn.2026-01.uvroot:test, LUN 1
+uvroot info: netfs: iSCSI LUN is 16777216 bytes, 512-byte blocks
+uvroot error: netfs: no user-space filesystem driver could read ... (supported: ext2/3/4)
+```
+
+即传输层（登录 + READ CAPACITY）已通；块设备之上的 ext2/3/4 驱动还需要同样用
+NDK 编 `libext2fs`（以及 QCOW2 压缩簇要的 `zlib`）后才能挂载。
+
 ---
 
 ## 3. 兼容性矩阵（本 fork，NDK 构建，已含 §4.1 修复）
