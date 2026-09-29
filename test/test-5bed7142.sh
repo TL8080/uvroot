@@ -3,9 +3,9 @@ if [ ! -x  ${ROOTFS}/bin/pwd ] || [ -z `which mkdir` ] || [ -z `which grep` ] ||
 fi
 
 mkdir -p ${ROOTFS}/${PWD}
-${PROOT} -v 1 -w . -r ${ROOTFS} pwd | grep ^${PWD}$
+${UVROOT} -v 1 -w . -r ${ROOTFS} pwd | grep ^${PWD}$
 
 TMP=/tmp/$(mcookie)
 mkdir ${TMP}
-! ${PROOT} sh -c "cd ${TMP}; rmdir ${TMP}; $(which pwd) -P"
+! ${UVROOT} sh -c "cd ${TMP}; rmdir ${TMP}; $(which pwd) -P"
 [ $? -eq 0 ]

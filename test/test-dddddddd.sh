@@ -19,12 +19,12 @@ export LANG=C
 
 ln -s /bin ${TMP}
 ! ${RMDIR} ${TMP} > ${TMP}.ref 2>&1
-! ${PROOT} -v -1 ${RMDIR} ${TMP} > ${TMP}.res 2>&1
+! ${UVROOT} -v -1 ${RMDIR} ${TMP} > ${TMP}.res 2>&1
 cmp ${TMP}.ref ${TMP}.res
 
 ln -s /this/does/not/exist ${TMP2}
 ! ${MKDIR} ${TMP2} > ${TMP2}.ref 2>&1
-! ${PROOT} -v -1 ${MKDIR} ${TMP2} > ${TMP2}.res 2>&1
+! ${UVROOT} -v -1 ${MKDIR} ${TMP2} > ${TMP2}.res 2>&1
 cmp ${TMP2}.ref ${TMP2}.res
 
 rm -f ${TMP}

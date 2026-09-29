@@ -15,4 +15,4 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       uthash-dev \
       xsltproc
 
-USER proot
+USER uvroot

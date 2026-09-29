@@ -558,7 +558,7 @@ int portmap_callback(Extension *extension, ExtensionEvent event,
 	    return 0;
 	}
     case SYSCALL_ENTER_END:{
-	    /* As PRoot only translate unix sockets,
+	    /* As uvroot only translate unix sockets,
 	     * it doesn't actually matter whether we do this
 	     * on the ENTER_START or ENTER_END stage. */
 	    Tracee *tracee = TRACEE(extension);

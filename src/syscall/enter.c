@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -30,6 +30,8 @@
 #include <sys/prctl.h>		/* PR_SET_DUMPABLE */
 #include "syscall/syscall.h"
 #include "syscall/sysnum.h"
+#include "cli/note.h"
+#include "path/binding.h"	/* binding_host_read_only, */
 #include "syscall/socket.h"
 #include "ptrace/ptrace.h"
 #include "ptrace/wait.h"
@@ -51,6 +53,8 @@
  * @type. This function returns -errno if an error occured, otherwise
  * 0.
  */
+static bool syscall_modifies(Tracee *tracee);
+
 static int translate_path2(Tracee *tracee, int dir_fd, char path[PATH_MAX],
 			   Reg reg, Type type)
 {
@@ -67,12 +71,78 @@ static int translate_path2(Tracee *tracee, int dir_fd, char path[PATH_MAX],
     if (status < 0)
 	return status;
 
+    /*
+     * The translation resolved the path against the bindings (a -b
+     * binding, a directory given by -r, the mirror of an image, ...).
+     * If it went through a read-only one, any syscall that changes the
+     * file system is refused here, whatever the identity.
+     */
+    if (syscall_modifies(tracee)) {
+	int violation = read_only_violation(tracee, new_path);
+
+	if (violation < 0)
+	    return violation;
+    }
+
     return set_sysarg_path(tracee, new_path, reg);
 }
 
 /**
  * A helper, see the comment of the function above.
  */
+/*
+ * Does the current syscall change the file system?  A read-only mapping
+ * only refuses those; reads, stats and execve must keep working.
+ */
+static bool syscall_modifies(Tracee *tracee)
+{
+    word_t flags;
+    Sysnum sysnum = get_sysnum(tracee, ORIGINAL);
+
+    switch (sysnum) {
+    case PR_open:
+	flags = peek_reg(tracee, CURRENT, SYSARG_2);
+	return (flags & (O_WRONLY | O_RDWR | O_CREAT | O_TRUNC
+			 | O_APPEND)) != 0;
+    case PR_openat:
+	flags = peek_reg(tracee, CURRENT, SYSARG_3);
+	return (flags & (O_WRONLY | O_RDWR | O_CREAT | O_TRUNC
+			 | O_APPEND)) != 0;
+    case PR_creat:
+    case PR_unlink:
+    case PR_unlinkat:
+    case PR_mkdir:
+    case PR_mkdirat:
+    case PR_rmdir:
+    case PR_rename:
+    case PR_renameat:
+    case PR_renameat2:
+    case PR_truncate:
+    case PR_truncate64:
+    case PR_symlink:
+    case PR_symlinkat:
+    case PR_link:
+    case PR_linkat:
+    case PR_chmod:
+    case PR_fchmodat:
+    case PR_chown:
+    case PR_lchown:
+    case PR_fchownat:
+    case PR_mknod:
+    case PR_mknodat:
+    case PR_utime:
+    case PR_utimes:
+    case PR_utimensat:
+    case PR_setxattr:
+    case PR_lsetxattr:
+    case PR_removexattr:
+    case PR_lremovexattr:
+	return true;
+    default:
+	return false;
+    }
+}
+
 static int translate_sysarg(Tracee *tracee, Reg reg, Type type)
 {
     char old_path[PATH_MAX];
@@ -184,10 +254,10 @@ int translate_syscall_enter(Tracee *tracee)
 	     * this means that there's an ambiguity when several
 	     * bindings are from the same host path:
 	     *
-	     *    $ proot -m /tmp:/a -m /tmp:/b fchdir_getcwd /a
+	     *    $ uvroot -m /tmp:/a -m /tmp:/b fchdir_getcwd /a
 	     *    /b
 	     *
-	     *    $ proot -m /tmp:/b -m /tmp:/a fchdir_getcwd /a
+	     *    $ uvroot -m /tmp:/b -m /tmp:/a fchdir_getcwd /a
 	     *    /a
 	     *
 	     * A solution would be to follow each file descriptor

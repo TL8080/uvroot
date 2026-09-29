@@ -8,9 +8,9 @@ mkdir ${TMP}
 ln -s /proc/self/fd ${TMP}/fd
 ln -s ${TMP}/fd/0 ${TMP}/stdin
 
-${PROOT} \ls ${TMP}/stdin | grep ^${TMP}/stdin$
+${UVROOT} \ls ${TMP}/stdin | grep ^${TMP}/stdin$
 
 echo OK > ${TMP2}
-${PROOT} cat ${TMP}/stdin < ${TMP2} | grep ^OK$
+${UVROOT} cat ${TMP}/stdin < ${TMP2} | grep ^OK$
 
 rm -fr ${TMP} ${TMP2}

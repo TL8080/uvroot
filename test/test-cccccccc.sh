@@ -5,10 +5,10 @@ fi
 TMP=/tmp/$(mcookie)
 mkdir ${TMP}
 
-! ${PROOT} rmdir ${TMP}/.
+! ${UVROOT} rmdir ${TMP}/.
 [ $? -eq 0 ]
 
-! ${PROOT} rmdir ${TMP}/./
+! ${UVROOT} rmdir ${TMP}/./
 [ $? -eq 0 ]
 
-${PROOT} rmdir ${TMP}
+${UVROOT} rmdir ${TMP}

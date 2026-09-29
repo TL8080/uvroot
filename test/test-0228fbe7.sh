@@ -7,19 +7,19 @@ TMP2=/tmp/$(mcookie)
 
 ${ROOTFS}/bin/ptrace-2 ${ROOTFS}/bin/true 2>&1 >${TMP1}
 
-${PROOT} ${ROOTFS}/bin/ptrace-2 ${ROOTFS}/bin/true 2>&1 >${TMP2}
+${UVROOT} ${ROOTFS}/bin/ptrace-2 ${ROOTFS}/bin/true 2>&1 >${TMP2}
 
 cmp ${TMP1} ${TMP2}
 
 env PTRACER_BEHAVIOR_1=1 ${ROOTFS}/bin/ptrace-2 ${ROOTFS}/bin/true 2>&1 >${TMP1}
 
-env PTRACER_BEHAVIOR_1=1 ${PROOT} ${ROOTFS}/bin/ptrace-2 ${ROOTFS}/bin/true 2>&1 >${TMP2}
+env PTRACER_BEHAVIOR_1=1 ${UVROOT} ${ROOTFS}/bin/ptrace-2 ${ROOTFS}/bin/true 2>&1 >${TMP2}
 
 cmp ${TMP1} ${TMP2}
 
 env PTRACER_BEHAVIOR_2=1 ${ROOTFS}/bin/ptrace-2 ${ROOTFS}/bin/true 2>&1 >${TMP1}
 
-env PTRACER_BEHAVIOR_2=1 ${PROOT} ${ROOTFS}/bin/ptrace-2 ${ROOTFS}/bin/true 2>&1 >${TMP2}
+env PTRACER_BEHAVIOR_2=1 ${UVROOT} ${ROOTFS}/bin/ptrace-2 ${ROOTFS}/bin/true 2>&1 >${TMP2}
 
 cmp ${TMP1} ${TMP2}
 

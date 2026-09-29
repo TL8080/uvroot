@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -282,7 +282,7 @@ int push_regs(Tracee *tracee)
     if (tracee->_regs_were_changed) {
 	/* At the very end of a syscall, with regard to the
 	 * entry, only the result register can be modified by
-	 * PRoot.  */
+	 * uvroot.  */
 	if (tracee->restore_original_regs) {
 	    /* Restore the sysarg register only if it is
 	     * not the same as the result register.  Note:

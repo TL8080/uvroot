@@ -9,8 +9,8 @@ fi
 
 TMP="/tmp/$(mcookie)"
 
-[ ! "$(${PROOT} mknod ${TMP} b 1 1)" = "0" ]
+[ ! "$(${UVROOT} mknod ${TMP} b 1 1)" = "0" ]
 
-[ ! "$(${PROOT} -i 123:456 mknod ${TMP} b 1 1)" = "0" ]
+[ ! "$(${UVROOT} -i 123:456 mknod ${TMP} b 1 1)" = "0" ]
 
-"${PROOT}" -0 mknod "${TMP}" b 1 1
+"${UVROOT}" -0 mknod "${TMP}" b 1 1

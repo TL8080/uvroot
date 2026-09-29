@@ -15,14 +15,14 @@ echo '#!/usr/bin/echo XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 chmod +x "${TMP}"
 
-RESULT="$(${PROOT} ${TMP})"
+RESULT="$(${UVROOT} ${TMP})"
 EXPECTED="$(${TMP})"
 
 [ "${RESULT}" = "${EXPECTED}" ]
 
 echo '#!//../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../../usr/bin/echo XXXXXXXXX' > "${TMP}"
 
-RESULT="$(${PROOT} ${TMP})"
+RESULT="$(${UVROOT} ${TMP})"
 EXPECTED="$(${TMP})"
 
 [ "${RESULT}" = "${EXPECTED}" ]
@@ -32,23 +32,23 @@ echo '#!/../../../../../../../../../../../../../../../../../../../../../../../..
 if ${TMP}; then
     # Linux kernel 5.1-rc1 increases the shebang limit to 256
     [ "${RESULT}" = "XXXXXXXXX ${TMP}" ]
-    ${PROOT} ${TMP}
+    ${UVROOT} ${TMP}
 else
     [ "${RESULT}" = "${TMP}" ]
-    ! ${PROOT} ${TMP}
+    ! ${UVROOT} ${TMP}
 fi
 
 echo '#!                                                                                                                                                                                                        ' > ${TMP}
 
-${PROOT} ${TMP}
+${UVROOT} ${TMP}
 
 echo '#!' > ${TMP}
 
-${PROOT} ${TMP}
+${UVROOT} ${TMP}
 
 /usr/bin/echo "#!${TMP}" > ${TMP}
 
-env LANG=C ${PROOT} ${TMP} 2>&1 | grep 'Too many levels of symbolic links'
+env LANG=C ${UVROOT} ${TMP} 2>&1 | grep 'Too many levels of symbolic links'
 [ $? -eq 0 ]
 
 rm -f "${TMP}"

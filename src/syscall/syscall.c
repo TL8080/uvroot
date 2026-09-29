@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -120,7 +120,7 @@ void translate_syscall(Tracee *tracee)
 
 	/* Translate the syscall only if it was actually
 	 * requested by the tracee, it is not a syscall
-	 * chained by PRoot.  */
+	 * chained by uvroot.  */
 	if (tracee->chain.syscalls == NULL) {
 	    save_current_regs(tracee, ORIGINAL);
 	    status = translate_syscall_enter(tracee);
@@ -158,7 +158,7 @@ void translate_syscall(Tracee *tracee)
 
 	/* Translate the syscall only if it was actually
 	 * requested by the tracee, it is not a syscall
-	 * chained by PRoot.  */
+	 * chained by uvroot.  */
 	if (tracee->chain.syscalls == NULL)
 	    translate_syscall_exit(tracee);
 	else

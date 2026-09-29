@@ -13,10 +13,10 @@ mkdir -p ${ROOTFS}/${TMP1}
 chmod -w ${ROOTFS}/${TMP1}
 
 cd ${TMP2}
-${PROOT} -r ${ROOTFS} -b . readdir ${TMP1}
-${PROOT} -r ${ROOTFS} -b . readdir ${TMP2}
-${PROOT} -r ${ROOTFS} -b . readdir ${TMP2}/..
-${PROOT} -r ${ROOTFS} -b . readdir ${TMP2}/../..
+${UVROOT} -r ${ROOTFS} -b . readdir ${TMP1}
+${UVROOT} -r ${ROOTFS} -b . readdir ${TMP2}
+${UVROOT} -r ${ROOTFS} -b . readdir ${TMP2}/..
+${UVROOT} -r ${ROOTFS} -b . readdir ${TMP2}/../..
 
 rm -fr ${TMP1}
 rm -fr ${ROOTFS}/${TMP1}

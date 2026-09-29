@@ -4,13 +4,13 @@ fi
 
 UTSNAME="\\sysname\\nodename\\$(uname -r)\\version\\machine\\domainname\\0\\"
 
-${PROOT} -k ${UTSNAME} uname -s | grep ^sysname$
-${PROOT} -k ${UTSNAME} uname -n | grep ^nodename$
-${PROOT} -k ${UTSNAME} uname -v | grep ^version$
-${PROOT} -k ${UTSNAME} uname -m | grep ^machine$
-${PROOT} -k ${UTSNAME} domainname | grep ^domainname$
-${PROOT} -k ${UTSNAME} env LD_SHOW_AUXV=1 true | grep -E '^AT_HWCAP:[[:space:]]*0?$'
+${UVROOT} -k ${UTSNAME} uname -s | grep ^sysname$
+${UVROOT} -k ${UTSNAME} uname -n | grep ^nodename$
+${UVROOT} -k ${UTSNAME} uname -v | grep ^version$
+${UVROOT} -k ${UTSNAME} uname -m | grep ^machine$
+${UVROOT} -k ${UTSNAME} domainname | grep ^domainname$
+${UVROOT} -k ${UTSNAME} env LD_SHOW_AUXV=1 true | grep -E '^AT_HWCAP:[[:space:]]*0?$'
 
-${PROOT} -0 -k ${UTSNAME} sh -c 'domainname domainname2; domainname' | grep ^domainname2$
-${PROOT} -0 -k ${UTSNAME} sh -c 'hostname hostname2; hostname' | grep ^hostname2$
-${PROOT} -0 -k ${UTSNAME} sh -c 'hostname hostname2; uname -n' | grep ^hostname2$
+${UVROOT} -0 -k ${UTSNAME} sh -c 'domainname domainname2; domainname' | grep ^domainname2$
+${UVROOT} -0 -k ${UTSNAME} sh -c 'hostname hostname2; hostname' | grep ^hostname2$
+${UVROOT} -0 -k ${UTSNAME} sh -c 'hostname hostname2; uname -n' | grep ^hostname2$

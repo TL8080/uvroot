@@ -19,9 +19,9 @@ COMMAND="gdb ${ROOTFS}/bin/true -batch -n -x ${TMP5}"
 ${COMMAND} > ${TMP1}
 ! grep -v 'process' ${TMP1} > ${TMP2}
 
-${PROOT} ${COMMAND} > ${TMP4}
+${UVROOT} ${COMMAND} > ${TMP4}
 ! grep -v 'process' ${TMP4} > ${TMP3}
-! grep -v '^proot warning: ' ${TMP3} > ${TMP4}
+! grep -v '^uvroot warning: ' ${TMP3} > ${TMP4}
 
 cmp ${TMP2} ${TMP4}
 

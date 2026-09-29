@@ -22,7 +22,7 @@ const char *get_temp_directory()
     if (temp_directory != NULL)
 	return temp_directory;
 
-    temp_directory = getenv("PROOT_TMP_DIR");
+    temp_directory = getenv("UVROOT_TMP_DIR");
     if (temp_directory == NULL) {
 	temp_directory = P_tmpdir;
 	return temp_directory;
@@ -31,7 +31,7 @@ const char *get_temp_directory()
     tmp = realpath(temp_directory, NULL);
     if (tmp == NULL) {
 	note(NULL, WARNING, SYSTEM,
-	     "can't canonicalize %s, using %s instead of PROOT_TMP_DIR",
+	     "can't canonicalize %s, using %s instead of UVROOT_TMP_DIR",
 	     temp_directory, P_tmpdir);
 
 	temp_directory = P_tmpdir;
@@ -305,7 +305,7 @@ char *create_temp_name(TALLOC_CTX *context, const char *prefix)
 
 /**
  * Create a directory that will be automatically removed either on
- * PRoot termination if @context is NULL, or once its path name
+ * uvroot termination if @context is NULL, or once its path name
  * (attached to @context) is freed.  This function returns NULL on
  * error, otherwise the absolute path name to the created directory
  * (@prefix-ed).
@@ -322,7 +322,7 @@ const char *create_temp_directory(TALLOC_CTX *context, const char *prefix)
     if (name == NULL) {
 	note(NULL, ERROR, SYSTEM, "can't create temporary directory");
 	note(NULL, INFO, USER,
-	     "Please set PROOT_TMP_DIR env. variable "
+	     "Please set UVROOT_TMP_DIR env. variable "
 	     "to an alternate location (with write permission).");
 	return NULL;
     }
@@ -333,7 +333,7 @@ const char *create_temp_directory(TALLOC_CTX *context, const char *prefix)
 }
 
 /**
- * Create a file that will be automatically removed either on PRoot
+ * Create a file that will be automatically removed either on uvroot
  * termination if @context is NULL, or once its path name (attached to
  * @context) is freed.  This function returns NULL on error,
  * otherwise the absolute path name to the created file (@prefix-ed).
@@ -351,7 +351,7 @@ const char *create_temp_file(TALLOC_CTX *context, const char *prefix)
     if (fd < 0) {
 	note(NULL, ERROR, SYSTEM, "can't create temporary file");
 	note(NULL, INFO, USER,
-	     "Please set PROOT_TMP_DIR env. variable "
+	     "Please set UVROOT_TMP_DIR env. variable "
 	     "to an alternate location (with write permission).");
 	return NULL;
     }
@@ -392,7 +392,7 @@ FILE *open_temp_file(TALLOC_CTX *context, const char *prefix)
     if (fd >= 0)
 	close(fd);
     note(NULL, ERROR, SYSTEM, "can't create temporary file");
-    note(NULL, INFO, USER, "Please set PROOT_TMP_DIR env. variable "
+    note(NULL, INFO, USER, "Please set UVROOT_TMP_DIR env. variable "
 	 "to an alternate location (with write permission).");
     return NULL;
 }

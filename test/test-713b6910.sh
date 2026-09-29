@@ -21,8 +21,8 @@ EOF
 chmod +x ${TMP1}
 ln -s ${TMP1} ${TMP2}
 
-${PROOT} ${TMP2} | grep -v ${TMP1}
-${PROOT} ${TMP2} | grep ${TMP2}
+${UVROOT} ${TMP2} | grep -v ${TMP1}
+${UVROOT} ${TMP2} | grep ${TMP2}
 
 ######################################################################
 
@@ -30,18 +30,18 @@ mkdir -p ${TMP3}
 cd ${TMP3}
 
 ln -s $(which true) false
-! ${PROOT} false
+! ${UVROOT} false
 
 echo "#!$(which false)" > true
 chmod a-x true
-${PROOT} true
+${UVROOT} true
 
 ######################################################################
 
 ln -s ${ROOTFS}/bin/readlink ${TMP4}
 
-TEST1=$(${PROOT} ${ROOTFS}/bin/readlink /proc/self/exe)
-TEST2=$(${PROOT} ${TMP4} /proc/self/exe)
+TEST1=$(${UVROOT} ${ROOTFS}/bin/readlink /proc/self/exe)
+TEST2=$(${UVROOT} ${TMP4} /proc/self/exe)
 
 test "${TEST1}" = "${TEST2}"
 

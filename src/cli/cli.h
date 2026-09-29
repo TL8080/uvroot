@@ -54,7 +54,7 @@ typedef struct Cli {
     const Option options[];
 } Cli;
 
-extern const Cli *get_proot_cli(TALLOC_CTX * context);
+extern const Cli *get_uvroot_cli(TALLOC_CTX * context);
 extern const Cli *WEAK get_care_cli(TALLOC_CTX * context);
 
 extern void print_usage(Tracee * tracee, const Cli * cli, bool detailed);
@@ -64,6 +64,6 @@ extern int parse_integer_option(const Tracee * tracee, int *variable,
 extern const char *expand_front_variable(TALLOC_CTX * context,
 					 const char *string);
 
-extern bool exit_failure;
+extern __thread bool exit_failure;
 
 #endif				/* CLI_H */

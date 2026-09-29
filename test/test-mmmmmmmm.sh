@@ -5,11 +5,11 @@ fi
 TMP=$(mcookie)
 cd /tmp
 
-${PROOT} mkdir ./${TMP}
-${PROOT} rmdir ./${TMP}
+${UVROOT} mkdir ./${TMP}
+${UVROOT} rmdir ./${TMP}
 
-${PROOT} mkdir ${TMP}/
-${PROOT} rmdir ${TMP}/
+${UVROOT} mkdir ${TMP}/
+${UVROOT} rmdir ${TMP}/
 
-${PROOT} mkdir ./${TMP}/
-${PROOT} rmdir ./${TMP}/
+${UVROOT} mkdir ./${TMP}/
+${UVROOT} rmdir ./${TMP}/

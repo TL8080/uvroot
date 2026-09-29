@@ -15,9 +15,9 @@ if [ ! -e ${ROOTFS}/${TMP}/${A} ]; then
     exit 125;
 fi
 
-env PATH=${TMP} ${PROOT} -r ${ROOTFS} ${B}
+env PATH=${TMP} ${UVROOT} -r ${ROOTFS} ${B}
 
 rm -f ${TMP}/${B}  # just in case it also exists in the host env.
-${PROOT} -r ${ROOTFS} /${TMP}/${B}
+${UVROOT} -r ${ROOTFS} /${TMP}/${B}
 
 rm -fr ${ROOTFS}/${TMP}

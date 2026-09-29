@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -66,7 +66,7 @@ Action readlink_proc(const Tracee *tracee, char result[PATH_MAX],
 
     case PATH1_IS_PREFIX:
 	/* Handle "/proc/<PID>" below, where <PID> is process
-	 * monitored by PRoot.  */
+	 * monitored by uvroot.  */
 	break;
 
     default:

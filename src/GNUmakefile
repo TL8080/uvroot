@@ -1,5 +1,5 @@
 # If you want to build outside of the source tree, use the -f option:
-#     make -f ${SOMEWHERE}/proot/src/GNUmakefile
+#     make -f ${SOMEWHERE}/uvroot/src/GNUmakefile
 
 # the VPATH variable must point to the actual makefile directory
 VPATH := $(dir $(lastword $(MAKEFILE_LIST)))
@@ -60,6 +60,55 @@ CFLAGS   += $(shell ${PKG_CONFIG} --cflags talloc)
 LDFLAGS  += -Wl,-z,noexecstack
 LDFLAGS  += $(shell ${PKG_CONFIG} --libs talloc)
 
+# The netfs extension optionally supports FTP/FTPS/SFTP, SMB, ext2/3/4
+# images, NBD and iSCSI.  The libraries are *not* linked: they are
+# resolved with dlopen() at run time so uvroot keeps no dependency on
+# them and still starts on unrooted Android/Termux systems where they
+# are missing.  The headers are only needed to build the backends in.
+HAS_LIBCURL := $(shell ${PKG_CONFIG} --exists libcurl && echo yes)
+HAS_LIBSMBCLIENT := $(shell ${PKG_CONFIG} --exists smbclient && echo yes)
+HAS_LIBEXT2FS := $(shell ${PKG_CONFIG} --exists ext2fs && echo yes)
+HAS_LIBNBD := $(shell ${PKG_CONFIG} --exists libnbd && echo yes)
+HAS_LIBISCSI := $(shell ${PKG_CONFIG} --exists libiscsi && echo yes)
+HAS_LIBNFS := $(shell ${PKG_CONFIG} --exists libnfs && echo yes)
+HAS_ZLIB := $(shell ${PKG_CONFIG} --exists zlib && echo yes)
+
+ifneq ($(HAS_LIBCURL),)
+  CFLAGS += -DHAVE_LIBCURL $(shell ${PKG_CONFIG} --cflags libcurl)
+endif
+
+ifneq ($(HAS_LIBSMBCLIENT),)
+  CFLAGS += -DHAVE_LIBSMBCLIENT $(shell ${PKG_CONFIG} --cflags smbclient)
+endif
+
+ifneq ($(HAS_LIBEXT2FS),)
+  CFLAGS += -DHAVE_LIBEXT2FS $(shell ${PKG_CONFIG} --cflags ext2fs)
+endif
+
+ifneq ($(HAS_LIBNBD),)
+  CFLAGS += -DHAVE_LIBNBD $(shell ${PKG_CONFIG} --cflags libnbd)
+endif
+
+ifneq ($(HAS_LIBISCSI),)
+  CFLAGS += -DHAVE_LIBISCSI $(shell ${PKG_CONFIG} --cflags libiscsi)
+endif
+
+ifneq ($(HAS_LIBNFS),)
+  CFLAGS += -DHAVE_LIBNFS $(shell ${PKG_CONFIG} --cflags libnfs)
+endif
+
+ifneq ($(HAS_ZLIB),)
+  CFLAGS += -DHAVE_ZLIB $(shell ${PKG_CONFIG} --cflags zlib)
+endif
+
+# dlopen()/dlsym() live in libc on recent glibc and on Android bionic,
+# and in libdl elsewhere.  Probe before adding -ldl so musl builds and
+# the like do not break.
+HAVE_LIBDL := $(shell printf 'int main(void){return 0;}' | $(CC) -x c - -ldl -o /dev/null 2>/dev/null && echo yes)
+ifneq ($(HAVE_LIBDL),)
+  LDFLAGS += -ldl
+endif
+
 ifneq ($(findstring -static,$(LDFLAGS)),)
 CARE_LDFLAGS  = -Wl,--start-group $(shell ${PKG_CONFIG} --libs --static libarchive) \
                 $(shell ${PKG_CONFIG} --exists libxml-2.0 && ${PKG_CONFIG} --libs --static libxml-2.0) \
@@ -70,7 +119,7 @@ endif
 
 OBJECTS += \
 	cli/cli.o		\
-	cli/proot.o		\
+	cli/uvroot.o		\
 	cli/note.o		\
 	execve/enter.o		\
 	execve/exit.o		\
@@ -94,6 +143,7 @@ OBJECTS += \
 	syscall/socket.o	\
 	syscall/heap.o		\
 	syscall/rlimit.o	\
+	tracee/container.o		\
 	tracee/tracee.o		\
 	tracee/mem.o		\
 	tracee/reg.o		\
@@ -107,6 +157,18 @@ OBJECTS += \
 	extension/link2symlink/link2symlink.o \
 	extension/portmap/portmap.o \
 	extension/portmap/map.o \
+	extension/netfs/netfs.o \
+	extension/netfs/backend_curl.o \
+	extension/netfs/backend_smb.o \
+	extension/netfs/share.o \
+	extension/netfs/backend_nfs.o \
+	extension/netfs/backend_img.o \
+	extension/netfs/backend_qcow2.o \
+	extension/netfs/backend_nbd.o \
+	extension/netfs/backend_iscsi.o \
+	extension/netfs/fs_ext2.o \
+	extension/netfs/backend_reserved.o \
+	extension/vperm/vperm.o \
 	loader/loader-wrapped.o
 
 define define_from_arch.h
@@ -121,9 +183,9 @@ endif
 
 ifneq ($(and $(HAS_SWIG),$(HAS_PYTHON_CONFIG)),)
   OBJECTS += extension/python/python.o \
-		   extension/python/proot_wrap.o \
+		   extension/python/uvroot_wrap.o \
 		   extension/python/python_extension.o \
-		   extension/python/proot.o
+		   extension/python/uvroot.o
 endif
 
 CARE_OBJECTS = 				\
@@ -134,8 +196,8 @@ CARE_OBJECTS = 				\
 	extension/care/extract.o	\
 	extension/care/archive.o
 
-.DEFAULT_GOAL = proot
-all: proot
+.DEFAULT_GOAL = uvroot
+all: uvroot
 
 ######################################################################
 # Beautified output
@@ -216,7 +278,7 @@ OBJIFY = $($(quiet)GEN)									\
 				grep architecture | cut -f 1 -d , | awk '{print $$2}'`	\
 		$< $@
 
-proot: $(OBJECTS)
+uvroot: $(OBJECTS)
 	$(LINK)
 
 care: $(OBJECTS) $(CARE_OBJECTS)
@@ -261,14 +323,14 @@ python_extension.py: extension/python/python_extension.py
 extension/python/python_extension.o: python_extension.py cli/cli.o
 	$$(OBJIFY)
 
-.SECONDARY: proot_wrap.c proot.py
-proot_wrap.c proot.py: extension/python/proot.i
-	$$($$(quiet)SWIG) $$(SWIG_OPT) -outcurrentdir -I$$(VPATH) $$(VPATH)/extension/python/proot.i
+.SECONDARY: uvroot_wrap.c uvroot.py
+uvroot_wrap.c uvroot.py: extension/python/uvroot.i
+	$$($$(quiet)SWIG) $$(SWIG_OPT) -outcurrentdir -I$$(VPATH) $$(VPATH)/extension/python/uvroot.i
 
-extension/python/proot.o: proot.py cli/cli.o
+extension/python/uvroot.o: uvroot.py cli/cli.o
 	$$(OBJIFY)
 
-extension/python/proot_wrap.o: proot_wrap.c
+extension/python/uvroot_wrap.o: uvroot_wrap.c
 	$$($$(quiet)CC) $$(CPPFLAGS) $$(CFLAGS) -MD -c $$< -o $$@
 
 endef
@@ -333,16 +395,16 @@ BINDIR ?= $(PREFIX)/bin
 
 .PHONY: clean distclean install install-care uninstall
 clean distclean:
-	-$(RM) -f $(CHECK_OBJECTS) $(CHECK_PROGRAMS) $(CHECK_RESULTS) $(OBJECTS) $(CARE_OBJECTS) $(LOADER_OBJECTS) $(LOADER-m32_OBJECTS) proot care loader/loader loader/loader-m32 cli/care-manual.o $(DEPS) build.h licenses proot.py proot_wrap.c
+	-$(RM) -f $(CHECK_OBJECTS) $(CHECK_PROGRAMS) $(CHECK_RESULTS) $(OBJECTS) $(CARE_OBJECTS) $(LOADER_OBJECTS) $(LOADER-m32_OBJECTS) uvroot care loader/loader loader/loader-m32 cli/care-manual.o $(DEPS) build.h licenses uvroot.py uvroot_wrap.c
 
-install: proot
+install: uvroot
 	$($(quiet)INSTALL) -D $< $(DESTDIR)$(BINDIR)/$<
 
 install-care: care
 	$($(quiet)INSTALL) -D $< $(DESTDIR)$(BINDIR)/$<
 
 uninstall:
-	-$(RM) -f $(DESTDIR)$(BINDIR)/proot
+	-$(RM) -f $(DESTDIR)$(BINDIR)/uvroot
 
 uninstall-care:
 	-$(RM) -f $(DESTDIR)$(BINDIR)/care

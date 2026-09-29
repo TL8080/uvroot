@@ -11,7 +11,7 @@ extern char *environ[];
 int main(void)
 {
     char *const argv[] = { "argv0", "argv1", "argv2", NULL };
-    char tmp_name[] = "/tmp/proot-XXXXXX";
+    char tmp_name[] = "/tmp/uvroot-XXXXXX";
     int status;
     int fd;
 

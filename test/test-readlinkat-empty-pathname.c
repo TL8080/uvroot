@@ -2,7 +2,7 @@
  * Regression test for https://github.com/proot-me/proot/issues/182
  *
  * readlinkat(2) with an empty pathname (valid since Linux 2.6.39 when dirfd
- * was opened with O_PATH|O_NOFOLLOW) caused proot to call detranslate_path()
+ * was opened with O_PATH|O_NOFOLLOW) caused uvroot to call detranslate_path()
  * with an empty referrer string, which then passed length=0 to
  * compare_paths2, triggering assert(length2 > 0) and aborting the tracer.
  */
@@ -51,7 +51,7 @@ int main()
 
     /*
      * readlinkat with empty pathname operates on the symlink fd itself.
-     * Before the fix this crashed proot via assert(length2 > 0) in
+     * Before the fix this crashed uvroot via assert(length2 > 0) in
      * compare_paths2 because detranslate_path received an empty
      * referrer.
      */

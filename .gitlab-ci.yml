@@ -14,19 +14,19 @@ before_script:
 check:
   stage: check
   script:
-    - make -C src proot care
+    - make -C src uvroot care
     - timeout --signal=SIGKILL 5m make -C test || true # ignore failing tests (for now)
 
 dist:
   stage: dist
   script:
-    - LDFLAGS="${LDFLAGS} -static" make -C src proot GIT=false
+    - LDFLAGS="${LDFLAGS} -static" make -C src uvroot GIT=false
   after_script:
     - mkdir -p dist
-    - cp src/proot dist/
+    - cp src/uvroot dist/
     - cd dist
-    - sha256sum ./proot > proot.sha256sum
-    - md5sum ./proot > proot.md5sum
+    - sha256sum ./uvroot > uvroot.sha256sum
+    - md5sum ./uvroot > uvroot.md5sum
   artifacts:
     paths:
       - dist
@@ -42,7 +42,7 @@ gcov:
 scan-build:
   stage: static-analysis
   script:
-    - scan-build make -C src proot
+    - scan-build make -C src uvroot
   after_script:
     - cp -R /tmp/scan-build-* scan-build-latest
   artifacts:

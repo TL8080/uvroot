@@ -8,35 +8,35 @@ fi
 
 DONT_EXIST=/$(mcookie)
 
-${PROOT} -r ${ROOTFS} true
+${UVROOT} -r ${ROOTFS} true
 
-! ${PROOT} ${DONT_EXIST} true
+! ${UVROOT} ${DONT_EXIST} true
 [ $? -eq 0 ]
 
-${PROOT} -r ${ROOTFS} true
-${PROOT} -r /etc -r ${ROOTFS} true
+${UVROOT} -r ${ROOTFS} true
+${UVROOT} -r /etc -r ${ROOTFS} true
 
-! ${PROOT} -r ${ROOTFS} -r ${DONT_EXIST} true
+! ${UVROOT} -r ${ROOTFS} -r ${DONT_EXIST} true
 [ $? -eq 0 ]
 
-! ${PROOT} -r ${DONT_EXIST} ${ROOTFS} true
+! ${UVROOT} -r ${DONT_EXIST} ${ROOTFS} true
 [ $? -eq 0 ]
 
-! ${PROOT} ${ROOTFS} -r ${ROOTFS} true
+! ${UVROOT} ${ROOTFS} -r ${ROOTFS} true
 [ $? -eq 0 ]
 
-! ${PROOT} -v
+! ${UVROOT} -v
 [ $? -eq 0 ]
 
-${PROOT} -b /bin/true:${DONT_EXIST} ${DONT_EXIST}
+${UVROOT} -b /bin/true:${DONT_EXIST} ${DONT_EXIST}
 
-! ${PROOT} -r / -b /etc:/ true
+! ${UVROOT} -r / -b /etc:/ true
 [ $? -eq 0 ]
 
-! ${PROOT} -b /etc:/ true
+! ${UVROOT} -b /etc:/ true
 [ $? -eq 0 ]
 
-${PROOT} -b /etc:/ -r / true
+${UVROOT} -b /etc:/ -r / true
 
 TMP1=/tmp/$(mcookie)
 TMP2=/tmp/$(mcookie)
@@ -48,16 +48,16 @@ REGULAR=/tmp/$(mcookie)
 SYMLINK_TO_REGULAR=/tmp/$(mcookie)
 ln -s ${REGULAR} ${SYMLINK_TO_REGULAR}
 
-${PROOT} -v -1 -b ${TMP1}:${REGULAR} -b ${TMP2}:${SYMLINK_TO_REGULAR} cat ${REGULAR} | grep "^${TMP2}$"
-${PROOT} -v -1 -b ${TMP2}:${SYMLINK_TO_REGULAR} -b ${TMP1}:${REGULAR} cat ${REGULAR} | grep "^${TMP1}$"
+${UVROOT} -v -1 -b ${TMP1}:${REGULAR} -b ${TMP2}:${SYMLINK_TO_REGULAR} cat ${REGULAR} | grep "^${TMP2}$"
+${UVROOT} -v -1 -b ${TMP2}:${SYMLINK_TO_REGULAR} -b ${TMP1}:${REGULAR} cat ${REGULAR} | grep "^${TMP1}$"
 
-${PROOT} -v -1 -b ${TMP1}:${REGULAR} -b ${TMP2}:${SYMLINK_TO_REGULAR}! cat ${REGULAR} | grep "^${TMP1}$"
-${PROOT} -v -1 -b ${TMP1}:${REGULAR} -b ${TMP2}:${SYMLINK_TO_REGULAR}! cat ${SYMLINK_TO_REGULAR} | grep "^${TMP2}$"
+${UVROOT} -v -1 -b ${TMP1}:${REGULAR} -b ${TMP2}:${SYMLINK_TO_REGULAR}! cat ${REGULAR} | grep "^${TMP1}$"
+${UVROOT} -v -1 -b ${TMP1}:${REGULAR} -b ${TMP2}:${SYMLINK_TO_REGULAR}! cat ${SYMLINK_TO_REGULAR} | grep "^${TMP2}$"
 
-${PROOT} -v -1 -b ${TMP1}:${REGULAR}! -b ${TMP2}:${SYMLINK_TO_REGULAR}! cat ${REGULAR} | grep "^${TMP1}$"
-${PROOT} -v -1 -b ${TMP1}:${REGULAR}! -b ${TMP2}:${SYMLINK_TO_REGULAR}! cat ${SYMLINK_TO_REGULAR} | grep "^${TMP2}$"
+${UVROOT} -v -1 -b ${TMP1}:${REGULAR}! -b ${TMP2}:${SYMLINK_TO_REGULAR}! cat ${REGULAR} | grep "^${TMP1}$"
+${UVROOT} -v -1 -b ${TMP1}:${REGULAR}! -b ${TMP2}:${SYMLINK_TO_REGULAR}! cat ${SYMLINK_TO_REGULAR} | grep "^${TMP2}$"
 
-${PROOT} -v -1 -b ${TMP1}:${REGULAR} -b ${TMP2}:${SYMLINK_TO_REGULAR} cat ${SYMLINK_TO_REGULAR} | grep "^${TMP2}$"
-${PROOT} -v -1 -b ${TMP2}:${SYMLINK_TO_REGULAR} -b ${TMP1}:${REGULAR} cat ${SYMLINK_TO_REGULAR} | grep "^${TMP1}$"
+${UVROOT} -v -1 -b ${TMP1}:${REGULAR} -b ${TMP2}:${SYMLINK_TO_REGULAR} cat ${SYMLINK_TO_REGULAR} | grep "^${TMP2}$"
+${UVROOT} -v -1 -b ${TMP2}:${SYMLINK_TO_REGULAR} -b ${TMP1}:${REGULAR} cat ${SYMLINK_TO_REGULAR} | grep "^${TMP1}$"
 
 rm -fr ${TMP1} ${TMP2} ${REGULAR} $SYMLINK_TO_REGULAR}

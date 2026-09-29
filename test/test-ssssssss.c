@@ -21,7 +21,7 @@ int main()
     int fd;
 
     sockname =
-	strdup("proot-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+	strdup("uvroot-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 	       "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxXXXXXX");
     if (sockname == NULL)
 	return 125;

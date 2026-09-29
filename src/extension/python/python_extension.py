@@ -1,4 +1,4 @@
-from proot import *
+from uvroot import *
 import ctypes
 import importlib.util
 import sys

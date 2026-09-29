@@ -11,7 +11,7 @@ int main(void)
     char *path;
     int fd;
 
-    path = strdup("/tmp/proot-test-iiiiiiii-XXXXXX");
+    path = strdup("/tmp/uvroot-test-iiiiiiii-XXXXXX");
     if (path == NULL) {
 	result = 125;
 	goto end;
@@ -23,7 +23,7 @@ int main(void)
 	goto end;
     }
 
-    status = symlink("/this_shall_not_exist_outside_proot", path);
+    status = symlink("/this_shall_not_exist_outside_uvroot", path);
     if (status < 0) {
 	result = 125;
 	goto end;
@@ -31,12 +31,12 @@ int main(void)
 
     /* For faccessat(2) and fchmodat(2) syscalls, the fourth
      * parameter is *not* used by the kernel, only the libc uses
-     * it.  As a consequence, PRoot shall ignore this flag.
+     * it.  As a consequence, uvroot shall ignore this flag.
      *
-     * To be sure this parameter is really ignored by PRoot, we
+     * To be sure this parameter is really ignored by uvroot, we
      * set it to NOFOLLOW when performing a direct faccessat(2) to
      * a symlink which is broken from the host point-of-view, but
-     * valid from a guest point-of-view.  When PRoot does not
+     * valid from a guest point-of-view.  When uvroot does not
      * honor this flag, the faccessat(2) is performed against the
      * referee anyway.
      */

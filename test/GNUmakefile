@@ -1,10 +1,10 @@
 DIR = $(dir $(abspath $(firstword $(MAKEFILE_LIST))))
 ROOTFS = $(DIR)/rootfs
 SRC_DIR = $(DIR)/../src
-PROOT = $(SRC_DIR)/proot
+UVROOT = $(SRC_DIR)/uvroot
 CARE = $(SRC_DIR)/care
 CC = gcc
-PROOT_RAW = $(PROOT)
+UVROOT_RAW = $(UVROOT)
 
 CHECK_TESTS = $(patsubst %,check-%, $(wildcard test-*.sh) $(wildcard test-*.c))
 
@@ -12,8 +12,8 @@ CHECK_TESTS = $(patsubst %,check-%, $(wildcard test-*.sh) $(wildcard test-*.c))
 
 check: | clean_failure check_failure
 
-memcheck: PROOT_RAW := $(PROOT)
-memcheck: PROOT := $(shell which valgrind) -q --error-exitcode=1 $(PROOT)
+memcheck: UVROOT_RAW := $(UVROOT)
+memcheck: UVROOT := $(shell which valgrind) -q --error-exitcode=1 $(UVROOT)
 memcheck: check
 
 clean_failure:
@@ -23,10 +23,10 @@ check_failure: $(CHECK_TESTS)
 	@bash -c '! test -e failure'
 
 check-%.sh: %.sh setup
-	$(Q)env CARE="$(CARE)" PROOT_RAW="$(PROOT_RAW)" PROOT="$(PROOT)" ROOTFS=$(ROOTFS) PATH="$${PATH}:/bin" sh -ex $< $(silently); $(call check,$*)
+	$(Q)env CARE="$(CARE)" UVROOT_RAW="$(UVROOT_RAW)" UVROOT="$(UVROOT)" ROOTFS=$(ROOTFS) PATH="$${PATH}:/bin" sh -ex $< $(silently); $(call check,$*)
 
 check-%.c: $(ROOTFS)/bin/% setup
-	$(call check_c,$*,$(PROOT) -b /proc -r $(ROOTFS) /bin/$*)
+	$(call check_c,$*,$(UVROOT) -b /proc -r $(ROOTFS) /bin/$*)
 
 C_SHORT_TESTS = $(patsubst %.c,check-%,$(wildcard test-*.c))
 SH_SHORT_TESTS = $(patsubst %.sh,check-%,$(wildcard test-*.sh))
@@ -38,64 +38,64 @@ $(SH_SHORT_TESTS): check-%: check-%.sh
 
 # Special cases.
 check-test-sysexit.c: test-sysexit
-	$(call check_c,$<,env PROOT_FORCE_KOMPAT=1 $(PROOT) -k 3.4242XX ./$<)
+	$(call check_c,$<,env UVROOT_FORCE_KOMPAT=1 $(UVROOT) -k 3.4242XX ./$<)
 
 check-test-bdc90417.c: test-bdc90417
-	$(call check_c,$<,$(PROOT) -w . ./$<)
+	$(call check_c,$<,$(UVROOT) -w . ./$<)
 
 check-test-5bed7141.c: test-5bed7141
-	$(call check_c,$<,$(PROOT) ./$<)
+	$(call check_c,$<,$(UVROOT) ./$<)
 
 check-test-5bed7143.c: test-5bed7143
-	$(call check_c,$<,$(PROOT) -r $(ROOTFS) -b . ./$<)
-	$(call check_c,$<,$(PROOT) ./$<)
+	$(call check_c,$<,$(UVROOT) -r $(ROOTFS) -b . ./$<)
+	$(call check_c,$<,$(UVROOT) ./$<)
 
 check-test-16573e73.c: test-16573e73
-	$(call check_c,$<,$(PROOT) ./$<)
-	$(call check_c,$<,$(PROOT) ./$< 1)
+	$(call check_c,$<,$(UVROOT) ./$<)
+	$(call check_c,$<,$(UVROOT) ./$< 1)
 
 check-test-82ba4ba1.c: test-82ba4ba1
-	$(call check_c,$<,$(PROOT) -0 ./$<)
-	$(call check_c,$<,! $(PROOT) -i 123:456 ./$<)
+	$(call check_c,$<,$(UVROOT) -0 ./$<)
+	$(call check_c,$<,! $(UVROOT) -i 123:456 ./$<)
 
 check-test-kkkkkkkk.c: test-kkkkkkkk
-	$(call check_c,$<,$(PROOT) ./$<)
+	$(call check_c,$<,$(UVROOT) ./$<)
 
 check-test-25069c12.c: test-25069c12
-	$(call check_c,$<,$(PROOT) ./$<)
+	$(call check_c,$<,$(UVROOT) ./$<)
 
 check-test-25069c13.c: test-25069c13
-	$(call check_c,$<,$(PROOT) ./$<)
+	$(call check_c,$<,$(UVROOT) ./$<)
 
 check-test-1ffc8309.c: test-1ffc8309
-	$(call check_c,$<,env PROOT_FORCE_KOMPAT=1 $(PROOT) -k $(shell uname -r) ./$<)
+	$(call check_c,$<,env UVROOT_FORCE_KOMPAT=1 $(UVROOT) -k $(shell uname -r) ./$<)
 
 check-test-c5a7a0f0.c: test-c5a7a0f0
-	$(call check_c,$<,$(PROOT) -0 ./$<)
-	$(call check_c,$<,! $(PROOT) -i 123:456 ./$<)
+	$(call check_c,$<,$(UVROOT) -0 ./$<)
+	$(call check_c,$<,! $(UVROOT) -i 123:456 ./$<)
 
 #check-test-a3e68988.c: test-a3e68988
 #	@which gdb >/dev/null 2>&1 || rm -f $<
-#	$(call check_c,$<,$(PROOT) gdb -return-child-result -ex run -ex quit ./$<)
+#	$(call check_c,$<,$(UVROOT) gdb -return-child-result -ex run -ex quit ./$<)
 
 #check-test-c47aeb7d.c: test-c47aeb7d
 #	@which gdb >/dev/null 2>&1 || rm -f $<
-#	$(call check_c,$<,$(PROOT) gdb -return-child-result -ex run -ex quit ./$<)
+#	$(call check_c,$<,$(UVROOT) gdb -return-child-result -ex run -ex quit ./$<)
 
 check-test-fdf487a0.c: test-fdf487a0
-	$(call check_c,$<,echo test | $(PROOT) ./$<)
+	$(call check_c,$<,echo test | $(UVROOT) ./$<)
 
 check-test-iiiiiiii.c: test-iiiiiiii
-	$(call check_c,$<,echo test | env PROOT_DONT_POLLUTE_ROOTFS=1 $(PROOT) -b /bin:/this_shall_not_exist_outside_proot ./$<)
+	$(call check_c,$<,echo test | env UVROOT_DONT_POLLUTE_ROOTFS=1 $(UVROOT) -b /bin:/this_shall_not_exist_outside_uvroot ./$<)
 
 check-test-9c07fad8.c: test-9c07fad8
-	$(call check_c,$<,$(PROOT) ./$<)
+	$(call check_c,$<,$(UVROOT) ./$<)
 
 check-test-fa205b56.c: test-fa205b56
-	$(call check_c,$<,$(PROOT) ./$<)
+	$(call check_c,$<,$(UVROOT) ./$<)
 
 check-test-bug-182.c: test-bug-182
-	$(call check_c,$<,$(PROOT) ./$<)
+	$(call check_c,$<,$(UVROOT) ./$<)
 
 check_c = $(Q)if [ -e $< ]; then			\
 		$(2) $(silently); $(call check,$(1))	\

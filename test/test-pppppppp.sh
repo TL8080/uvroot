@@ -5,14 +5,14 @@ fi
 TMP=/tmp/$(mcookie)
 mkdir -p ${TMP}/true
 
-! ${PROOT} true
+! ${UVROOT} true
 if [ $? -eq 0 ]; then
     exit 125;
 fi
 
-env PATH=${TMP}:${PATH} ${PROOT} true
+env PATH=${TMP}:${PATH} ${UVROOT} true
 
-env PATH=${TMP}:${PATH} ${PROOT} env true
+env PATH=${TMP}:${PATH} ${UVROOT} env true
 
 rm -fr ${TMP}
 

@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -141,7 +141,7 @@ mode_t build_glue(Tracee *tracee, const char *guest_path,
 	mode = 0777;
     }
 
-    if (getenv("PROOT_DONT_POLLUTE_ROOTFS") != NULL && !belongs_to_gluefs)
+    if (getenv("UVROOT_DONT_POLLUTE_ROOTFS") != NULL && !belongs_to_gluefs)
 	goto create_binding;
 
     /* Try to create this component into the "guest" or "glue"
@@ -151,7 +151,7 @@ mode_t build_glue(Tracee *tracee, const char *guest_path,
     else			/* S_IFREG, S_IFCHR, S_IFBLK, S_IFIFO or S_IFSOCK.  */
 	status = mknod(host_path, mode | type, 0);
 
-    /* Remove placeholders from the guest rootfs once PRoot is
+    /* Remove placeholders from the guest rootfs once uvroot is
      * terminated.  */
     if (status >= 0 && !belongs_to_gluefs)
 	set_placeholder_destructor(host_path);

@@ -2,15 +2,15 @@ if [ -z `which uname` ] || [ -z `which true` ] || [ -z `which env` ] || [ -z `wh
     exit 125;
 fi
 
-${PROOT} -k $(uname -r) true
-env PROOT_FORCE_KOMPAT=1 ${PROOT} -k $(uname -r) true
+${UVROOT} -k $(uname -r) true
+env UVROOT_FORCE_KOMPAT=1 ${UVROOT} -k $(uname -r) true
 
-${PROOT} -k $(uname -r) ${ROOTFS}/bin/true
-env PROOT_FORCE_KOMPAT=1 ${PROOT} -k $(uname -r) ${ROOTFS}/bin/true
+${UVROOT} -k $(uname -r) ${ROOTFS}/bin/true
+env UVROOT_FORCE_KOMPAT=1 ${UVROOT} -k $(uname -r) ${ROOTFS}/bin/true
 
 if env LD_SHOW_AUXV=1 true | grep -q ^AT_RANDOM; then
-    env PROOT_FORCE_KOMPAT=1 ${PROOT} -k $(uname -r) env LD_SHOW_AUXV=1 true | tail -1 | grep ^AT_RANDOM
+    env UVROOT_FORCE_KOMPAT=1 ${UVROOT} -k $(uname -r) env LD_SHOW_AUXV=1 true | tail -1 | grep ^AT_RANDOM
 fi
 
-! ${PROOT} -k $(uname -r) env LD_SHOW_AUXV=1 true | grep AT_SYSINFO
+! ${UVROOT} -k $(uname -r) env LD_SHOW_AUXV=1 true | grep AT_SYSINFO
 [ $? -eq 0 ]

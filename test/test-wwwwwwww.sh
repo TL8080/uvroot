@@ -5,6 +5,6 @@ fi
 TMP=/tmp/$(mcookie)
 mkdir ${TMP}
 cd ${TMP}
-${PROOT} sh -c "cd ..; rm -r ${TMP}; mkdir ${TMP}; cd ${TMP}; ${ROOTFS}/bin/pwd"
+${UVROOT} sh -c "cd ..; rm -r ${TMP}; mkdir ${TMP}; cd ${TMP}; ${ROOTFS}/bin/pwd"
 
 rm -fr ${TMP}

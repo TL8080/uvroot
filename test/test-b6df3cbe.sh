@@ -11,6 +11,6 @@ cat /proc/\$$/cmdline
 EOF
 
 chmod +x /tmp/${TMP}
-(cd /tmp; ${PROOT} sh -c "./${TMP}") | tr '\000' ' ' | grep "^/bin/sh ./${TMP} $"
+(cd /tmp; ${UVROOT} sh -c "./${TMP}") | tr '\000' ' ' | grep "^/bin/sh ./${TMP} $"
 
 rm /tmp/${TMP}

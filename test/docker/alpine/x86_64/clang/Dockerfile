@@ -4,4 +4,4 @@ USER root
 
 RUN apk add --no-cache clang clang-analyzer
 
-USER proot
+USER uvroot

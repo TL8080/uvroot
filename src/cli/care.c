@@ -204,7 +204,7 @@ static Binding *new_concealing_binding(Tracee *tracee, const char *path,
 }
 
 /**
- * Initialize @tracee's fields that are mandatory for PRoot/CARE but
+ * Initialize @tracee's fields that are mandatory for uvroot/CARE but
  * that are not specifiable on the command line.
  */
 static int pre_initialize_bindings(Tracee *tracee, const Cli *cli,
@@ -359,7 +359,7 @@ static int pre_initialize_bindings(Tracee *tracee, const Cli *cli,
 	return -1;
     talloc_set_name_const(tracee->fs->cwd, "$cwd");
 
-    /* Initialize @tracee's root (required by PRoot).  */
+    /* Initialize @tracee's root (required by uvroot).  */
     binding = new_binding(tracee, "/", "/", true);
     if (binding == NULL)
 	return -1;

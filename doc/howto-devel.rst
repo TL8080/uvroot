@@ -1,8 +1,8 @@
-How to setup a development environment for PRoot?
+How to setup a development environment for uvroot?
 =================================================
 
 This document provides instructions for preparing
-a system for developing PRoot and CARE.
+a system for developing uvroot and CARE.
 
 Docker
 ------

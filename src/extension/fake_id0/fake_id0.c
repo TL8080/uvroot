@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -228,7 +228,7 @@ static void override_permissions(const Tracee *tracee, const char *path,
 
     /* @path was already canonicalized and stat'd above under the
      * tracee's translated view; this mirrors the path-based access
-     * pattern used throughout proot's path translation layer and isn't
+     * pattern used throughout uvroot's path translation layer and isn't
      * independently exploitable here. */
     /* codeql[cpp/toctou-race-condition] */
     (void) chmod(path, new_mode);	/* NOSONAR: see comment above */
@@ -834,7 +834,7 @@ int fake_id0_callback(Extension *extension, ExtensionEvent event,
 	     * share uid/gid information.  As a consequence, the
 	     * GlibC emulates the POSIX behavior on Linux by
 	     * sending a signal to all group threads to cause them
-	     * to invoke the system call too.  Finally, PRoot
+	     * to invoke the system call too.  Finally, uvroot
 	     * doesn't have to worry about clone flags.
 	     */
 
@@ -887,7 +887,7 @@ int fake_id0_callback(Extension *extension, ExtensionEvent event,
 	    if ((int) result < 0 || sysnum != PR_execve)
 		return 0;
 
-	    /* This has to be done before PRoot pushes the load
+	    /* This has to be done before uvroot pushes the load
 	     * script into tracee's stack.  */
 	    adjust_elf_auxv(tracee, config);
 

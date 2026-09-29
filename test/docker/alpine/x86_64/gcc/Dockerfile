@@ -8,4 +8,4 @@ RUN apk add --no-cache \
       gdb \
       lcov
 
-USER proot
+USER uvroot

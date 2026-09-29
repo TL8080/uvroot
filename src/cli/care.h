@@ -87,7 +87,7 @@ static Cli care_cli = {
     .synopsis = "care [option] ... command",
     .colophon =
 	"Visit https://proot-me.github.io for help, bug reports, suggestions, patches, ...\n\
-Copyright (C) 2021 PRoot Developers, licensed under GPL v2 or later.",
+Copyright (C) 2021 uvroot Developers, licensed under GPL v2 or later.",
     .logo = "\
   _____ ____ _____ ____\n\
  /   __/ __ |  __ \\  __|\n\

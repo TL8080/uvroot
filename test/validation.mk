@@ -4,7 +4,7 @@ perl-version      = 5.18.1
 ltp-version       = 20140422
 opt-version       = 20140422
 gdb-version       = 7.6.1
-proot-version     = 3.2.2
+uvroot-version     = 3.2.2
 glibc-version     = 2.17
 
 libuv     = libuv-$(libuv-version)
@@ -13,10 +13,10 @@ perl      = perl-$(perl-version)
 ltp       = ltp-$(ltp-version)
 opt       = opt-$(opt-version)
 gdb       = gdb-$(gdb-version)
-proot     = PRoot-$(proot-version)
+uvroot     = uvroot-$(uvroot-version)
 glibc     = glibc-$(glibc-version)
 
-testsuites = $(libuv) $(perl) $(ltp) $(opt) $(gdb) $(proot) $(coreutils) # $(glibc) too long.
+testsuites = $(libuv) $(perl) $(ltp) $(opt) $(gdb) $(uvroot) $(coreutils) # $(glibc) too long.
 logs       = $(testsuites:=.log)
 
 logs: $(logs)
@@ -100,7 +100,7 @@ $(gdb).log: $(gdb).tar.gz
 	tar -xf $<
 	cd $(gdb) && ./configure
 	$(MAKE) -C $(gdb)
-	rm -f $(gdb)/gdb/testsuite/gdb.base/attach-twice.exp     # kills PRoot explicitly
+	rm -f $(gdb)/gdb/testsuite/gdb.base/attach-twice.exp     # kills uvroot explicitly
 	($(MAKE) -C $(gdb)/gdb/testsuite check-gdb.base1 check-gdb.base2 check-gdb.server || true) | tee $@
 
 ######################################################################
@@ -123,11 +123,11 @@ $(glibc).log: $(glibc).tar.xz
 
 ######################################################################
 
-$(proot).tar.gz:
-	wget https://github.com/cedric-vincent/proot/archive/v$(proot-version).tar.gz -O $@
+$(uvroot).tar.gz:
+	wget https://github.com/cedric-vincent/uvroot/archive/v$(uvroot-version).tar.gz -O $@
 
-$(proot).log: $(proot).tar.gz
-	rm -fr $(proot)
+$(uvroot).log: $(uvroot).tar.gz
+	rm -fr $(uvroot)
 	tar -xf $<
-	$(MAKE) -C $(proot)/src
-	($(MAKE) -C $(proot)/test || true) | tee $@
+	$(MAKE) -C $(uvroot)/src
+	($(MAKE) -C $(uvroot)/test || true) | tee $@

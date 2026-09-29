@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -289,7 +289,7 @@ int canonicalize(Tracee *tracee, const char *user_path, bool deref_final,
 	case PATHS_ARE_EQUAL:
 	case PATH1_IS_PREFIX:
 	    /* Some links in "/proc" are generated
-	     * dynamically by the kernel.  PRoot has to
+	     * dynamically by the kernel.  uvroot has to
 	     * emulate some of them.  */
 	    status = readlink_proc(tracee, scratch_path,
 				   guest_path, component, comparison);

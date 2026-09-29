@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -29,7 +29,8 @@
 #include <sys/utsname.h>	/* uname(2), */
 #include <unistd.h>		/* fork(2), chdir(2), getpid(2), */
 #include <string.h>		/* strcmp(3), */
-#include <errno.h>		/* errno(3), */
+#include <errno.h>
+#include <pthread.h>	/* pthread_once, */		/* errno(3), */
 #include <stdbool.h>		/* bool, true, false, */
 #include <assert.h>		/* assert(3), */
 #include <stdlib.h>		/* atexit(3), getenv(3), */
@@ -82,14 +83,14 @@ int launch_process(Tracee *tracee, char *const argv[])
 
 	/* Synchronize with the tracer's event loop.  Without
 	 * this trick the tracer only sees the "return" from
-	 * the next execve(2) so PRoot wouldn't handle the
+	 * the next execve(2) so uvroot wouldn't handle the
 	 * interpreter/runner.  I also verified that strace
 	 * does the same thing. */
 	kill(getpid(), SIGSTOP);
 
 	/* Improve performance by using seccomp mode 2, unless
 	 * this support is explicitly disabled.  */
-	if (getenv("PROOT_NO_SECCOMP") == NULL)
+	if (getenv("UVROOT_NO_SECCOMP") == NULL)
 	    (void) enable_syscall_filtering(tracee);
 
 	/* Now process is ptraced, so the current rootfs is already the
@@ -109,7 +110,7 @@ int launch_process(Tracee *tracee, char *const argv[])
     return -ENOSYS;
 }
 
-/* Send the KILL signal to all tracees when PRoot has received a fatal
+/* Send the KILL signal to all tracees when uvroot has received a fatal
  * signal.  */
 static void kill_all_tracees2(int signum, siginfo_t *siginfo UNUSED,
 			      void *ucontext UNUSED)
@@ -206,7 +207,6 @@ static void print_talloc_hierarchy(int signum, siginfo_t *siginfo UNUSED,
     }
 }
 
-static int last_exit_status = -1;
 
 /**
  * Check if kernel >= 4.8
@@ -236,7 +236,7 @@ static bool is_kernel_4_8(void)
 }
 
 /**
- * Check if this instance of PRoot can *technically* handle @tracee.
+ * Check if this instance of uvroot can *technically* handle @tracee.
  */
 static void check_architecture(Tracee *tracee)
 {
@@ -275,31 +275,34 @@ static void check_architecture(Tracee *tracee)
 	 "A 64-bit version that supports 32-bit binaries is required");
 }
 
-/**
- * Wait then handle any event from any tracee.  This function returns
- * the exit status of the last terminated program.
+/*
+ * Install the process-wide signal handlers.  They are installed by
+ * whichever container thread runs first; a fatal signal stops every
+ * container of the process, not only one of them.
  */
-int event_loop()
+static pthread_once_t signal_handlers_once = PTHREAD_ONCE_INIT;
+
+/* Defined by the netfs extension: a transfer in progress watches it.  */
+extern volatile sig_atomic_t netfs_interrupt;
+
+static void note_interrupt(int signum, siginfo_t *info UNUSED, void *data UNUSED)
+{
+    netfs_interrupt = signum;
+}
+
+static void install_signal_handlers(void)
 {
     struct sigaction signal_action;
-    long status;
     int signum;
-
-    /* Kill all tracees when exiting.  */
-    status = atexit(kill_all_tracees);
-    if (status != 0)
-	note(NULL, WARNING, INTERNAL, "atexit() failed");
 
     /* All signals are blocked when the signal handler is called.
      * SIGINFO is used to know which process has signaled us and
      * RESTART is used to restart waitpid(2) seamlessly.  */
     bzero(&signal_action, sizeof(signal_action));
     signal_action.sa_flags = SA_SIGINFO | SA_RESTART;
-    status = sigfillset(&signal_action.sa_mask);
-    if (status < 0)
+    if (sigfillset(&signal_action.sa_mask) < 0)
 	note(NULL, WARNING, SYSTEM, "sigfillset()");
 
-    /* Handle all signals.  */
     for (signum = 0; signum < SIGRTMAX; signum++) {
 	switch (signum) {
 	case SIGQUIT:
@@ -311,6 +314,15 @@ int event_loop()
 	     * signals.  This ensures no process is left
 	     * untraced.  */
 	    signal_action.sa_sigaction = kill_all_tracees2;
+	    break;
+
+	case SIGINT:
+	case SIGTERM:
+	case SIGHUP:
+	    /* Remember that the user asked to stop: a long transfer can
+	     * then abort, instead of finishing before the signal is
+	     * forwarded to the tracee.  */
+	    signal_action.sa_sigaction = note_interrupt;
 	    break;
 
 	case SIGUSR1:
@@ -337,10 +349,28 @@ int event_loop()
 	    break;
 	}
 
-	status = sigaction(signum, &signal_action, NULL);
-	if (status < 0 && errno != EINVAL)
+	if (sigaction(signum, &signal_action, NULL) < 0 && errno != EINVAL)
 	    note(NULL, WARNING, SYSTEM, "sigaction(%d)", signum);
     }
+}
+
+/**
+ * Wait then handle any event from any tracee.  This function returns
+ * the exit status of the last terminated program.
+ */
+int event_loop()
+{
+    long status;
+
+    /* Kill all tracees when exiting.  */
+    status = atexit(kill_all_tracees);
+    if (status != 0)
+	note(NULL, WARNING, INTERNAL, "atexit() failed");
+
+    /* The signal handlers are process-wide: install them once, even
+     * when several containers run as several threads.  */
+    if (pthread_once(&signal_handlers_once, install_signal_handlers) != 0)
+	note(NULL, WARNING, SYSTEM, "pthread_once()");
 
     while (1) {
 	int tracee_status;
@@ -352,7 +382,10 @@ int event_loop()
 	free_terminated_tracees();
 
 	/* Wait for the next tracee's stop. */
-	pid = waitpid(-1, &tracee_status, __WALL);
+	/* __WNOTHREAD: several containers can share this process, each
+	 * one hosted by its own thread; without this flag every thread
+	 * would reap the others' tracees.  */
+	pid = waitpid(-1, &tracee_status, __WALL | __WNOTHREAD);
 	if (pid < 0) {
 	    if (errno != ECHILD) {
 		note(NULL, ERROR, SYSTEM, "waitpid()");
@@ -385,7 +418,7 @@ int event_loop()
 	(void) restart_tracee(tracee, signal);
     }
 
-    return last_exit_status;
+    return container_current()->exit_status;
 }
 
 /**
@@ -397,8 +430,6 @@ int event_loop()
 static int handle_tracee_event_kernel_4_8(Tracee *tracee,
 					  int tracee_status)
 {
-    static bool seccomp_detected = false;
-    static bool seccomp_enabled = false;	/* added for 4.8.0 */
     long status;
     int signal;
 
@@ -423,10 +454,10 @@ static int handle_tracee_event_kernel_4_8(Tracee *tracee,
     signal = 0;
 
     if (WIFEXITED(tracee_status)) {
-	last_exit_status = WEXITSTATUS(tracee_status);
+	tracee->container->exit_status = WEXITSTATUS(tracee_status);
 	VERBOSE(tracee, 1,
 		"vpid %" PRIu64 ": exited with status %d",
-		tracee->vpid, last_exit_status);
+		tracee->vpid, tracee->container->exit_status);
 	terminate_tracee(tracee);
     } else if (WIFSIGNALED(tracee_status)) {
 	check_architecture(tracee);
@@ -440,8 +471,6 @@ static int handle_tracee_event_kernel_4_8(Tracee *tracee,
 	signal = (tracee_status & 0xfff00) >> 8;
 
 	switch (signal) {
-	    static bool deliver_sigtrap = false;
-
 	case SIGTRAP:{
 		const unsigned long default_ptrace_options
 		    =
@@ -460,10 +489,10 @@ static int handle_tracee_event_kernel_4_8(Tracee *tracee,
 		 * related to the tracing loop, others SIGTRAP
 		 * carry tracing information because of
 		 * TRACE*FORK/CLONE/EXEC.  */
-		if (deliver_sigtrap)
+		if (tracee->container->deliver_sigtrap)
 		    break;	/* Deliver this signal as-is.  */
 
-		deliver_sigtrap = true;
+		tracee->container->deliver_sigtrap = true;
 
 		/* Try to enable seccomp mode 2...  */
 		status =
@@ -471,7 +500,7 @@ static int handle_tracee_event_kernel_4_8(Tracee *tracee,
 			   NULL,
 			   default_ptrace_options | PTRACE_O_TRACESECCOMP);
 		if (status < 0) {
-		    seccomp_enabled = false;
+		    tracee->container->seccomp_enabled = false;
 		    /* ... otherwise use default options only.  */
 		    status =
 			ptrace(PTRACE_SETOPTIONS,
@@ -482,19 +511,19 @@ static int handle_tracee_event_kernel_4_8(Tracee *tracee,
 			exit(EXIT_FAILURE);
 		    }
 		} else {
-		    if (getenv("PROOT_NO_SECCOMP") == NULL)
-			seccomp_enabled = true;
+		    if (getenv("UVROOT_NO_SECCOMP") == NULL)
+			tracee->container->seccomp_enabled = true;
 		}
 	    }
 	    /* Fall through. */
 	case SIGTRAP | PTRACE_EVENT_SECCOMP2 << 8:
 	case SIGTRAP | PTRACE_EVENT_SECCOMP << 8:
 
-	    if (!seccomp_detected && seccomp_enabled) {
+	    if (!tracee->container->seccomp_detected && tracee->container->seccomp_enabled) {
 		VERBOSE(tracee, 1,
 			"ptrace acceleration (seccomp mode 2) enabled");
 		tracee->seccomp = ENABLED;
-		seccomp_detected = true;
+		tracee->container->seccomp_detected = true;
 	    }
 
 	    if (signal == (SIGTRAP | PTRACE_EVENT_SECCOMP2 << 8)
@@ -591,7 +620,7 @@ static int handle_tracee_event_kernel_4_8(Tracee *tracee,
 	    break;
 
 	case SIGSTOP:
-	    /* Stop this tracee until PRoot has received
+	    /* Stop this tracee until uvroot has received
 	     * the EVENT_*FORK|CLONE notification.  */
 	    if (tracee->exe == NULL) {
 		tracee->sigstop = SIGSTOP_PENDING;
@@ -613,7 +642,7 @@ static int handle_tracee_event_kernel_4_8(Tracee *tracee,
     }
 
     /* Clear the pending event, if any.  */
-    tracee->as_ptracee.event4.proot.pending = false;
+    tracee->as_ptracee.event4.uvroot.pending = false;
 
     return signal;
 }
@@ -627,7 +656,6 @@ static int handle_tracee_event_kernel_4_8(Tracee *tracee,
  */
 int handle_tracee_event(Tracee *tracee, int tracee_status)
 {
-    static bool seccomp_detected = false;
     long status;
     int signal;
 
@@ -654,10 +682,10 @@ int handle_tracee_event(Tracee *tracee, int tracee_status)
     signal = 0;
 
     if (WIFEXITED(tracee_status)) {
-	last_exit_status = WEXITSTATUS(tracee_status);
+	tracee->container->exit_status = WEXITSTATUS(tracee_status);
 	VERBOSE(tracee, 1,
 		"vpid %" PRIu64 ": exited with status %d",
-		tracee->vpid, last_exit_status);
+		tracee->vpid, tracee->container->exit_status);
 	terminate_tracee(tracee);
     } else if (WIFSIGNALED(tracee_status)) {
 	check_architecture(tracee);
@@ -671,8 +699,6 @@ int handle_tracee_event(Tracee *tracee, int tracee_status)
 	signal = (tracee_status & 0xfff00) >> 8;
 
 	switch (signal) {
-	    static bool deliver_sigtrap = false;
-
 	case SIGTRAP:{
 		const unsigned long default_ptrace_options
 		    =
@@ -691,10 +717,10 @@ int handle_tracee_event(Tracee *tracee, int tracee_status)
 		 * related to the tracing loop, others SIGTRAP
 		 * carry tracing information because of
 		 * TRACE*FORK/CLONE/EXEC.  */
-		if (deliver_sigtrap)
+		if (tracee->container->deliver_sigtrap)
 		    break;	/* Deliver this signal as-is.  */
 
-		deliver_sigtrap = true;
+		tracee->container->deliver_sigtrap = true;
 
 		/* Try to enable seccomp mode 2...  */
 		status =
@@ -768,11 +794,11 @@ int handle_tracee_event(Tracee *tracee, int tracee_status)
 
 		signal = 0;
 
-		if (!seccomp_detected) {
+		if (!tracee->container->seccomp_detected) {
 		    VERBOSE(tracee, 1,
 			    "ptrace acceleration (seccomp mode 2) enabled");
 		    tracee->seccomp = ENABLED;
-		    seccomp_detected = true;
+		    tracee->container->seccomp_detected = true;
 		}
 
 		/* Use the common ptrace flow if seccomp was
@@ -823,7 +849,7 @@ int handle_tracee_event(Tracee *tracee, int tracee_status)
 	    break;
 
 	case SIGSTOP:
-	    /* Stop this tracee until PRoot has received
+	    /* Stop this tracee until uvroot has received
 	     * the EVENT_*FORK|CLONE notification.  */
 	    if (tracee->exe == NULL) {
 		tracee->sigstop = SIGSTOP_PENDING;
@@ -845,7 +871,7 @@ int handle_tracee_event(Tracee *tracee, int tracee_status)
     }
 
     /* Clear the pending event, if any.  */
-    tracee->as_ptracee.event4.proot.pending = false;
+    tracee->as_ptracee.event4.uvroot.pending = false;
 
     return signal;
 }

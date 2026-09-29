@@ -12,7 +12,7 @@ Current state
 
 ``test/`` is a black-box integration suite: it builds a real
 ``test/rootfs``, compiles small static C programs, and runs them
-*through* the real ``proot`` binary via ``ptrace``, checking the exit
+*through* the real ``uvroot`` binary via ``ptrace``, checking the exit
 code. 156 test files, driven entirely by ``test/GNUmakefile``.
 
 Measured against the current suite:
@@ -53,8 +53,8 @@ Where libcheck fits, and where it doesn't
 libcheck is a unit-testing framework. It calls a C function
 in-process and asserts on the return value. Most of what ``test/``
 checks is traced-process behavior under ``ptrace``, which requires
-spawning and running through the real ``proot`` binary.
-libcheck doesn't fit that layer. But proot has a second, currently
+spawning and running through the real ``uvroot`` binary.
+libcheck doesn't fit that layer. But uvroot has a second, currently
 nonexistent layer libcheck fits well: unit tests of its own internal
 functions.
 
@@ -86,7 +86,7 @@ scratch:
   on failure, directly solving the "opaque failure" problem. It also
   provides ``compile_c_static``/``compile_c_dynamic`` and
   ``check_if_command_exists`` (skip if a dependency is missing), the
-  same shape as proot's own pattern rules and dependency checks, but
+  same shape as uvroot's own pattern rules and dependency checks, but
   reusable instead of copy-pasted per test.
 
 + **Tests grouped by category**, in files like ``cli.bats``,
@@ -95,7 +95,7 @@ scratch:
   test case.
 
 proot-rs's ``bind.bats`` and ``cwd.bats`` cover the same ground as
-proot's own ``test-305ae31d.sh``/``test-22222222.sh`` (bind) and
+uvroot's own ``test-305ae31d.sh``/``test-22222222.sh`` (bind) and
 ``chdir_getcwd.c``/``test-5bed7141.c`` (cwd): the same behavior,
 tested twice, in two different styles, against two different
 implementations of the same tool.
@@ -107,19 +107,19 @@ proot-rs's CLI (``proot-rs/src/cli.rs``) currently implements only
 ``-r``/``--rootfs``, ``-b``/``--bind``, ``-w``/``--cwd``, and a bare
 command. It has no ``-q`` (qemu), ``-v`` (verbose), ``-0``/``-i``
 (id-faking), ``-k`` (kernel-release), ``-p`` (port map), and none of
-proot's extensions (``care``, ``fake_id0``, ``kompat``,
+uvroot's extensions (``care``, ``fake_id0``, ``kompat``,
 ``link2symlink``, ``portmap``, the python extension). Only the
 common-denominator surface has a proot-rs equivalent to run the same
 test against: rootfs, bind, cwd, execve/shebang handling, and
-fork/clone/multi-tracee path translation. The rest of proot's suite is
-proot-specific by definition, and stays that way until proot-rs
+fork/clone/multi-tracee path translation. The rest of uvroot's suite is
+uvroot-specific by definition, and stays that way until proot-rs
 implements the corresponding feature.
 
 Unit testing: the actual gap
 -------------------------------
 
 proot-rs has this layer already, via ``cargo test`` on its Rust unit
-tests. proot(C) has zero unit-level coverage of its own internal
+tests. uvroot(C) has zero unit-level coverage of its own internal
 functions. Every check in ``test/`` goes through the full
 ptrace/rootfs machinery, even for logic that doesn't need any of it.
 
@@ -148,7 +148,7 @@ a function under test that hits one of this codebase's many
 ``assert()`` calls aborts that test, not the whole suite. That's
 exactly the failure mode ``readlink_proc()``'s assertion crash in
 #438 was. It's available as the Debian/Ubuntu ``check`` package, the
-same kind of lightweight apt-installable dependency proot already has
+same kind of lightweight apt-installable dependency uvroot already has
 (``libtalloc-dev``, ``libarchive-dev``, ...).
 
 Not every internal function is this easy to reach in isolation.
@@ -160,14 +160,14 @@ work from picking the framework.
 Proposal
 --------
 
-1. **Adopt Bats** for proot's black-box suite instead of building a
+1. **Adopt Bats** for uvroot's black-box suite instead of building a
    bespoke assertion header/TAP wrapper. proot-rs already validated
    the choice, documented the alternatives it ruled out, and a shared
    framework is a prerequisite for (4) below.
 
 2. **Port a small number of existing tests as a proof of concept**
    first, not a big-bang rewrite. ``cwd.bats`` and ``bind.bats`` have
-   the most direct 1:1 overlap with proot's own cwd/bind tests and are
+   the most direct 1:1 overlap with uvroot's own cwd/bind tests and are
    small enough to validate the approach before committing to it
    project-wide.
 
@@ -176,13 +176,13 @@ Proposal
    category is the natural point to also give each case a real name.
 
 4. **Parameterize the common-denominator tests by binary**, with
-   ``$PROOT`` pointing at either implementation, mirroring proot-rs's
-   own ``PROOT_RS`` override, so the same Bats file can run as a
-   conformance check against both proot and proot-rs. That turns
+   ``$UVROOT`` pointing at either implementation, mirroring proot-rs's
+   own ``UVROOT_RS`` override, so the same Bats file can run as a
+   conformance check against both uvroot and proot-rs. That turns
    "these two projects should behave the same" from an assumption
    into something CI verifies.
 
-5. **Add libcheck as a second, separate test binary** for proot's
+5. **Add libcheck as a second, separate test binary** for uvroot's
    internal functions, starting with the already-pure candidates
    (``compare_paths()``, ``join_paths()``). This is a second layer
    alongside (1), not a replacement, catching a different class of
@@ -199,7 +199,7 @@ Non-goals
   should be triaged separately; this proposal only makes their status
   visible instead of silently tolerated.
 
-+ Migrating proot-specific tests, like the extensions or
++ Migrating uvroot-specific tests, like the extensions or
   ``-p``/``-k``/``-q``, to Bats in this pass. Those have no proot-rs
   counterpart to share with, so there's no shared-framework benefit
   driving that work yet. They can move later on their own merits, if

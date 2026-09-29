@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -36,6 +36,12 @@ typedef struct binding {
     bool need_substitution;
     bool must_exist;
 
+    /* uvroot plumbing rather than something the user asked for: the
+     * vperm su/sudo shims, the virtual /etc/passwd, the injected
+     * resolver, ...  It works normally but is left out of the
+     * synthesized mount tables so that df(1) shows storage only.  */
+    bool internal;
+
     struct {
 	CIRCLEQ_ENTRY(binding) pending;
 	CIRCLEQ_ENTRY(binding) guest;
@@ -56,6 +62,18 @@ extern const char *get_path_binding(const Tracee *tracee, Side side,
 				    const char path[PATH_MAX]);
 extern Binding *get_binding(const Tracee *tracee, Side side,
 			    const char path[PATH_MAX]);
+
+/* Resolve the --ro / --read-only guest paths into host prefixes; called
+ * once the bindings are installed.  */
+extern void resolve_read_only_paths(Tracee * tracee);
+
+/*
+ * 0 when @path may be changed, -EROFS when it is below a path made
+ * read-only with --ro/--read-only, and -EPERM when it is that very path
+ * after it has been removed (it may not be recreated from inside).
+ */
+extern int read_only_violation(const Tracee * tracee,
+			       const char path[PATH_MAX]);
 extern const char *get_root(const Tracee *tracee);
 extern int substitute_binding(const Tracee *tracee, Side side,
 			      char path[PATH_MAX]);

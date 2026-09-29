@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -613,7 +613,7 @@ int care_callback(Extension *extension, ExtensionEvent event,
 		word_t result = peek_reg(tracee, CURRENT,
 					 SYSARG_RESULT);
 
-		/* Note: this can be done only before PRoot pushes the
+		/* Note: this can be done only before uvroot pushes the
 		 * load script into tracee's stack.  */
 		if ((int) result >= 0)
 		    adjust_elf_auxv(tracee);

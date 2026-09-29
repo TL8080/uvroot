@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -168,7 +168,7 @@ static void discard_fd_flags(Tracee *tracee, const Config *config,
  */
 static int handle_sysenter_end(Tracee *tracee, Config *config)
 {
-    /* Note: syscalls like "openat" can be replaced by "open" since PRoot
+    /* Note: syscalls like "openat" can be replaced by "open" since uvroot
      * has canonicalized "fd + path" into "path".  */
     switch (get_sysnum(tracee, ORIGINAL)) {
     case PR_accept4:{
@@ -361,7 +361,7 @@ static int handle_sysenter_end(Tracee *tracee, Config *config)
 		warned = true;
 		note(tracee, WARNING, USER,
 		     "kompat: this kernel doesn't support private futexes "
-		     "and PRoot can't emulate them.  Expect some troubles...");
+		     "and uvroot can't emulate them.  Expect some troubles...");
 	    }
 
 	    poke_reg(tracee, SYSARG_2, operation & ~FUTEX_PRIVATE_FLAG);
@@ -635,7 +635,7 @@ static void adjust_elf_auxv(Tracee *tracee, Config *config)
 	    /* Discard AT_SYSINFO* vectors: they can be used to
 	     * get the OS release number from memory instead of
 	     * from the uname syscall, and only this latter is
-	     * currently hooked by PRoot.  */
+	     * currently hooked by uvroot.  */
 	case AT_SYSINFO_EHDR:
 	case AT_SYSINFO:
 	    vector->type = AT_IGNORE;
@@ -936,7 +936,7 @@ static int parse_utsname(Config *config, const char *string)
     assert(string != NULL);
 
     status = uname(&utsname);
-    if (status < 0 || getenv("PROOT_FORCE_KOMPAT") != NULL)
+    if (status < 0 || getenv("UVROOT_FORCE_KOMPAT") != NULL)
 	config->actual_release = 0;
     else
 	config->actual_release = parse_kernel_release(utsname.release);
@@ -1079,7 +1079,7 @@ int kompat_callback(Extension *extension, ExtensionEvent event,
 						   Config);
 
 	    /* Nothing to do if this syscall is being discarded
-	     * (because of an error detected by PRoot).  */
+	     * (because of an error detected by uvroot).  */
 	    if ((int) data1 < 0)
 		return 0;
 
@@ -1101,7 +1101,7 @@ int kompat_callback(Extension *extension, ExtensionEvent event,
 	    word_t result = peek_reg(tracee, CURRENT, SYSARG_RESULT);;
 	    word_t sysnum = get_sysnum(tracee, ORIGINAL);
 
-	    /* Note: this can be done only before PRoot pushes the
+	    /* Note: this can be done only before uvroot pushes the
 	     * load script into tracee's stack.  */
 	    if ((int) result >= 0 && sysnum == PR_execve)
 		adjust_elf_auxv(tracee, config);

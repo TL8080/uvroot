@@ -10,7 +10,7 @@ echo "#! $(which echo) -b" > ${TMP2}
 
 chmod +x ${TMP1} ${TMP2}
 
-RESULT=$(${PROOT} ${TMP1})
+RESULT=$(${UVROOT} ${TMP1})
 EXPECTED=$(${TMP1})
 
 test "${RESULT}" = "${EXPECTED}"

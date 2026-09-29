@@ -590,7 +590,7 @@ link2symlink_callback(Extension *extension, ExtensionEvent event,
 		 * int symlink(const char *oldpath, const
 		 * char *newpath);
 		 *
-		 * Note: PRoot has already canonicalized
+		 * Note: uvroot has already canonicalized
 		 * linkat() paths this way:
 		 *
 		 * olddirfd + oldpath -> oldpath newdirfd +

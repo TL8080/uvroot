@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -127,7 +127,7 @@ int translate_socketcall_enter(Tracee *tracee, word_t *address, int size)
 
 	/* The translated path is too long to fit the sun_path
 	 * array, so let's bind it to a shorter path.  */
-	shorter_host_dir = create_temp_directory(tracee->ctx, "proot");
+	shorter_host_dir = create_temp_directory(tracee->ctx, "uvroot");
 	if (shorter_host_dir == NULL)
 	    return -EINVAL;
 

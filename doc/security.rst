@@ -1,14 +1,14 @@
-How to report security vulnerabilities in PRoot?
+How to report security vulnerabilities in uvroot?
 ================================================
 
 This document provides instruction on privately
-disclosing security vulnerabilities found in PRoot or CARE.
+disclosing security vulnerabilities found in uvroot or CARE.
 
 Vulnerabilities
 ---------------
 
 Fortunately, there have yet to be any serious flaws
-found in the PRoot / CARE source code.
+found in the uvroot / CARE source code.
 
 Confidential Contacts
 ---------------------

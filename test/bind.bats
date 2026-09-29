@@ -9,23 +9,23 @@ load helper
 
 @test "test bind dir to dir" {
     # bind /etc to /home
-    proot -b "/etc:/home" /bin/sh -c "diff /etc /home"
+    uvroot -b "/etc:/home" /bin/sh -c "diff /etc /home"
 }
 
 
 @test "test bind file to file" {
     # bind /etc/group to /etc/passwd
-    proot -b "/etc/group:/etc/passwd" /bin/sh -c "diff /etc/group /etc/passwd"
+    uvroot -b "/etc/group:/etc/passwd" /bin/sh -c "diff /etc/group /etc/passwd"
 }
 
 
 @test "test bind dir to file" {
     # bind /home to /etc/passwd. This may seem odd, but it is allowed.
-    proot -b "/home:/etc/passwd" /bin/sh -c "diff /home /etc/passwd"
+    uvroot -b "/home:/etc/passwd" /bin/sh -c "diff /home /etc/passwd"
 }
 
 
 @test "test bind file to dir" {
     # bind /etc/passwd to /home. This may seem odd, but it is allowed.
-    proot -b "/etc/passwd:/home" /bin/sh -c "diff /etc/passwd /home"
+    uvroot -b "/etc/passwd:/home" /bin/sh -c "diff /etc/passwd /home"
 }

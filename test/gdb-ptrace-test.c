@@ -48,7 +48,7 @@ static void kill_child(int child_pid)
 	perror("kill()");
 	exit(EXIT_FAILURE);
     }
-    // Sleep some time to let proot handle the kill event
+    // Sleep some time to let uvroot handle the kill event
     // in order to make sure a delayed wait on a dead ptracee works correctly.
     sleep(2);
 

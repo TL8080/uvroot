@@ -13,11 +13,11 @@ trap cleanup INT TERM EXIT
 tmpfile=`mktemp`
 
 # Check that kill on exit option is recognized
-${PROOT} --kill-on-exit true
+${UVROOT} --kill-on-exit true
 
-# Check that detached sleep does not block proot
+# Check that detached sleep does not block uvroot
 # I.e. in the file we must have "success" first, not "fail"
-${PROOT} --kill-on-exit sh -c "setsid sh -c \"sleep 2; echo fail >>$tmpfile\" &"
+${UVROOT} --kill-on-exit sh -c "setsid sh -c \"sleep 2; echo fail >>$tmpfile\" &"
 echo "success" >>$tmpfile
 read status_ <$tmpfile
 [ "$status_" = success ] || exit 1

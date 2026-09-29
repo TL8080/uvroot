@@ -6,4 +6,4 @@ TMP=/tmp/$(mcookie)
 
 mkdir ${TMP}
 
-env PROOT_FORCE_KOMPAT=1 ${PROOT} -k $(uname -r) rm -r ${TMP}
+env UVROOT_FORCE_KOMPAT=1 ${UVROOT} -k $(uname -r) rm -r ${TMP}

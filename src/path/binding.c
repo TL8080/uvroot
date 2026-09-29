@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -30,10 +30,10 @@
 #include <sys/queue.h>		/* CIRCLEQ_*, */
 #include <talloc.h>		/* talloc_*, */
 
+#include "cli/note.h"
 #include "path/binding.h"
 #include "path/path.h"
 #include "path/canon.h"
-#include "cli/note.h"
 
 #include "compat.h"
 
@@ -153,7 +153,7 @@ Binding *get_binding(const Tracee *tracee, Side side,
 	/* Avoid false positive when a prefix of the rootfs is
 	 * used as an asymmetric binding, ex.:
 	 *
-	 *     proot -m /usr:/location /usr/local/slackware
+	 *     uvroot -m /usr:/location /usr/local/slackware
 	 */
 	if (side == HOST
 	    && compare_paths(get_root(tracee),
@@ -342,7 +342,7 @@ static void insort_binding(const Tracee *tracee, Side side,
 	    }
 
 	    if (tracee->verbose > 0
-		&& getenv("PROOT_IGNORE_MISSING_BINDINGS") == NULL) {
+		&& getenv("UVROOT_IGNORE_MISSING_BINDINGS") == NULL) {
 		note(tracee, WARNING, USER,
 		     "both '%s' and '%s' are bound to '%s', "
 		     "only the last binding is active.",
@@ -493,7 +493,7 @@ Binding *new_binding(Tracee *tracee, const char *host, const char *guest,
     status =
 	realpath2(tracee->reconf.tracee, binding->host.path, host, true);
     if (status < 0) {
-	if (must_exist && getenv("PROOT_IGNORE_MISSING_BINDINGS") == NULL)
+	if (must_exist && getenv("UVROOT_IGNORE_MISSING_BINDINGS") == NULL)
 	    note(tracee, WARNING, INTERNAL,
 		 "can't sanitize binding \"%s\": %s", host,
 		 strerror(-status));
@@ -628,7 +628,7 @@ static void add_induced_bindings(Tracee *tracee,
     if (tracee->reconf.tracee == NULL)
 	return;
 
-    /* From the example, PRoot has already converted "-b /usr:/media" into
+    /* From the example, uvroot has already converted "-b /usr:/media" into
      * "-b /rootfs1/usr:/media" in order to ensure the host part is really a
      * host path.  Here, the host part is converted back to "/usr" since the
      * comparison can't be made on "/rootfs1/usr".
@@ -700,6 +700,174 @@ static void add_induced_bindings(Tracee *tracee,
  * @tracee->fs->bindings.host, then call initialize_binding() on each
  * binding listed in @tracee->fs->bindings.pending.
  */
+/*
+ * --ro / --read-only are path rules, not mount rules: a guest path is
+ * resolved through the bindings once they are installed, and every
+ * change under the resulting host prefix is refused.  Sub-directories
+ * and files are covered too, since the comparison is a prefix check.
+ */
+static void add_read_only_host(Tracee *tracee, const char *path)
+{
+    const char **hosts;
+    char *copy;
+    size_t length;
+
+    if (path == NULL || path[0] != '/')
+	return;
+
+    copy = talloc_strdup(tracee, path);
+    if (copy == NULL)
+	return;
+
+    /* Drop a trailing slash, unless the path is the root itself.  */
+    length = strlen(copy);
+    while (length > 1 && copy[length - 1] == '/')
+	copy[--length] = '\0';
+
+    /* Already covered by a previous rule?  */
+    {
+	size_t i;
+
+	for (i = 0; i < tracee->read_only.hosts_count; i++) {
+	    size_t prefix = strlen(tracee->read_only.hosts[i]);
+
+	    if (strncmp(copy, tracee->read_only.hosts[i], prefix) == 0
+		&& (prefix == 1 || copy[prefix] == '\0'
+		    || copy[prefix] == '/'))
+		return;
+	}
+    }
+
+    hosts = talloc_realloc(tracee, tracee->read_only.hosts, const char *,
+			   tracee->read_only.hosts_count + 1);
+    if (hosts == NULL)
+	return;
+    tracee->read_only.hosts = hosts;
+    hosts[tracee->read_only.hosts_count++] = copy;
+}
+
+void resolve_read_only_paths(Tracee *tracee)
+{
+    size_t i;
+
+
+    if (tracee->read_only.all) {
+	const char *root = get_root(tracee);
+	Binding *binding;
+
+	if (root != NULL)
+	    add_read_only_host(tracee, root);
+
+	/* A -b binding may live outside the rootfs.  */
+	CIRCLEQ_FOREACH_(tracee, binding, HOST)
+	    add_read_only_host(tracee, binding->host.path);
+	return;
+    }
+
+    for (i = 0; i < tracee->read_only.count; i++) {
+	const char *guest = tracee->read_only.paths[i];
+	Binding *binding = get_binding(tracee, GUEST, guest);
+	char host[PATH_MAX];
+
+	if (binding != NULL) {
+	    const char *suffix = guest + strlen(binding->guest.path);
+	    size_t hlen = strlen(binding->host.path);
+
+	    /* Do not introduce a double slash at the root.  */
+	    if (hlen > 0 && binding->host.path[hlen - 1] == '/'
+		&& suffix[0] == '/')
+		snprintf(host, sizeof(host), "%s%s",
+			 binding->host.path, suffix + 1);
+	    else
+		snprintf(host, sizeof(host), "%s%s",
+			 binding->host.path, suffix);
+	} else {
+	    const char *root = get_root(tracee);
+
+	    if (root == NULL)
+		continue;
+	    if (root[0] == '/' && root[1] == '\0')
+		snprintf(host, sizeof(host), "%s", guest);
+	    else
+		snprintf(host, sizeof(host), "%s%s", root, guest);
+	}
+
+	/*
+	 * A rule only makes sense for something that exists: --ro names a
+	 * path to protect, not a path to reserve.  Warn and ignore it
+	 * otherwise, so that the container can still create it.  Once
+	 * installed the rule stays in force, even if another container or
+	 * the host removes or changes the path later.
+	 */
+	if (access(host, F_OK) != 0) {
+	    note(NULL, WARNING, USER,
+		 "--ro=%s is ignored: \"%s\" does not exist", guest, host);
+	    continue;
+	}
+
+	add_read_only_host(tracee, host);
+    }
+}
+
+/* /dev, /proc, /sys and /run stay writable, even under a lock on /.  */
+static bool rootfs_exempt(const Tracee *tracee, const char path[PATH_MAX])
+{
+    const char *root = get_root(tracee);
+    const char *relative;
+    size_t length;
+
+    if (root == NULL)
+	return false;
+
+    length = strlen(root);
+    if (strncmp(path, root, length) != 0)
+	return false;
+    if (length > 1 && path[length] != '\0' && path[length] != '/')
+	return false;
+
+    relative = path + length;
+    while (*relative == '/')
+	relative++;
+
+    return strncmp(relative, "dev", 3) == 0
+	|| strncmp(relative, "proc", 4) == 0
+	|| strncmp(relative, "sys", 3) == 0
+	|| strncmp(relative, "run", 3) == 0;
+}
+
+int read_only_violation(const Tracee *tracee, const char path[PATH_MAX])
+{
+    size_t i;
+
+    if (tracee->read_only.hosts_count == 0)
+	return 0;
+
+    if (rootfs_exempt(tracee, path))
+	return 0;
+
+    for (i = 0; i < tracee->read_only.hosts_count; i++) {
+	const char *prefix = tracee->read_only.hosts[i];
+	size_t length = strlen(prefix);
+
+	if (strncmp(path, prefix, length) != 0)
+	    continue;
+	if (length > 1 && path[length] != '\0' && path[length] != '/')
+	    continue;
+
+	/*
+	 * The rule was installed because the path existed.  If it has
+	 * been removed since (by another container or by the host) it
+	 * must not be recreated from inside the container: EPERM.  A
+	 * change below the path is a write on read-only data: EROFS.
+	 */
+	if (length == strlen(path) && access(path, F_OK) != 0)
+	    return -EPERM;
+
+	return -EROFS;
+    }
+    return 0;
+}
+
 int initialize_bindings(Tracee *tracee)
 {
     Binding *binding;

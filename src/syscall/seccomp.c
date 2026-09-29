@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -93,7 +93,7 @@ static int add_statements(struct sock_fprog *program, size_t nb_statements,
 }
 
 /**
- * Append to @program->filter the statements required to notify PRoot
+ * Append to @program->filter the statements required to notify uvroot
  * about the given @syscall made by a tracee, with the given @flag.
  * This function returns -errno if an error occurred, otherwise 0.
  */
@@ -339,8 +339,8 @@ static int set_seccomp_filters(const FilteredSysnum *sysnums)
     return status;
 }
 
-/* List of sysnums handled by PRoot.  */
-static FilteredSysnum proot_sysnums[] = {
+/* List of sysnums handled by uvroot.  */
+static FilteredSysnum uvroot_sysnums[] = {
     { PR_accept, FILTER_SYSEXIT },
     { PR_accept4, FILTER_SYSEXIT },
     { PR_access, 0 },
@@ -478,7 +478,7 @@ static int merge_filtered_sysnums(TALLOC_CTX *context,
 }
 
 /**
- * Tell the kernel to trace only syscalls handled by PRoot and its
+ * Tell the kernel to trace only syscalls handled by uvroot and its
  * extensions.  This filter will be enabled for the given @tracee and
  * all of its future children.  This function returns -errno if an
  * error occurred, otherwise 0.
@@ -491,11 +491,11 @@ int enable_syscall_filtering(const Tracee *tracee)
 
     assert(tracee != NULL && tracee->ctx != NULL);
 
-    /* Add the sysnums required by PRoot to the list of filtered
+    /* Add the sysnums required by uvroot to the list of filtered
      * sysnums.  TODO: only if path translation is required.  */
     status =
 	merge_filtered_sysnums(tracee->ctx, &filtered_sysnums,
-			       proot_sysnums);
+			       uvroot_sysnums);
     if (status < 0)
 	return status;
 

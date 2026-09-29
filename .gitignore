@@ -15,7 +15,7 @@ src/.check_seccomp_filter.res
 src/build.h
 src/care*
 src/loader*
-src/proot*
+src/uvroot*
 test/*
 !test/*.sh.*
 !test/*.sh
@@ -26,3 +26,5 @@ test/*
 !test/helper.bash
 !test/docker
 !test/unit
+!test/android-a5
+!test/android-a5/**

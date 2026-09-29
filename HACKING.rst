@@ -1,12 +1,12 @@
 ==============================
- Contributing to PRoot / CARE
+ Contributing to uvroot / CARE
 ==============================
 
 -----------------------------------------------------------
-An introduction to contributing to PRoot / CARE development
+An introduction to contributing to uvroot / CARE development
 -----------------------------------------------------------
 
-The PRoot Team welcomes, and depends, on contributions from students and
+The uvroot Team welcomes, and depends, on contributions from students and
 collaborators in the open source and academic communities.
 Contributions can be made in a number of ways, a few examples are:
 
@@ -19,7 +19,7 @@ Reporting an Issue
 
 Please include as much detail as you can. Let us know your host kernel
 version, e.g, :code:`uname -a`, host/guest distribution, e.g. :code:`cat /etc/os-release`,
-and the :code:`PRoot`/:code:`CARE` version number. If you get an error please include the full
+and the :code:`uvroot`/:code:`CARE` version number. If you get an error please include the full
 error and/or traceback. Issues are tracked on GitHub at <https://github.com/proot-me/proot/issues>,
 or can also be sent via  the `mailing list <mailto:proot_me@googlegroups.com>`_.
 
@@ -42,7 +42,7 @@ Resources
 
 **Tracking Linux kernel and ABI changes**
 
-PRoot intercepts syscalls via ptrace and translates paths at the syscall ABI
+uvroot intercepts syscalls via ptrace and translates paths at the syscall ABI
 level, so kernel changes can directly affect correctness and completeness.
 Contributors working on core ptrace or syscall handling should monitor:
 

@@ -13,7 +13,7 @@ TMP="/tmp/$(mcookie)"
 mkdir "${TMP}"
 
 # shellcheck disable=SC2230
-"${PROOT}" -b "$(which true):${TMP}/true" "$(which true)"
+"${UVROOT}" -b "$(which true):${TMP}/true" "$(which true)"
 
 # shellcheck disable=SC2086
 [ ! "$(test -e ${TMP}/true)" = "0" ]

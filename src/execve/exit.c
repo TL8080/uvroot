@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -445,7 +445,7 @@ void translate_execve_exit(Tracee *tracee)
 	tracee->_regs_were_changed = true;
 
 	/* This is is required to make GDB work correctly
-	 * under PRoot, however it deserves to be used
+	 * under uvroot, however it deserves to be used
 	 * unconditionally.  */
 	(void) bind_proc_pid_auxv(tracee);
 

@@ -2,7 +2,7 @@
 set -eu
 
 # configure git
-git config --global user.name "PRoot"
+git config --global user.name "uvroot"
 git config --global user.email "proot_me@googlegroups.com"
 
 # clone site repository

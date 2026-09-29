@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -93,7 +93,7 @@ static const char *stringify_ptrace(PTRACE_REQUEST_TYPE request)
 
 /**
  * Translate the ptrace syscall made by @tracee into a "void" syscall
- * in order to emulate the ptrace mechanism within PRoot.  This
+ * in order to emulate the ptrace mechanism within uvroot.  This
  * function returns -errno if an error occured (unsupported request),
  * otherwise 0.
  */
@@ -157,7 +157,7 @@ int translate_ptrace_exit(Tracee *tracee)
 	ptracer = tracee->parent;
 	ptracee = tracee;
 
-	/* The emulated ptrace in PRoot has the same
+	/* The emulated ptrace in uvroot has the same
 	 * limitation as the real ptrace in the Linux kernel:
 	 * only one tracer per process.  */
 	if (PTRACEE.ptracer != NULL || ptracee == ptracer)
@@ -195,7 +195,7 @@ int translate_ptrace_exit(Tracee *tracee)
 	if (ptracee == NULL)
 	    return -ESRCH;
 
-	/* The emulated ptrace in PRoot has the same
+	/* The emulated ptrace in uvroot has the same
 	 * limitation as the real ptrace in the Linux kernel:
 	 * only one tracer per process.  */
 	if (PTRACEE.ptracer != NULL || ptracee == ptracer)
@@ -689,12 +689,12 @@ int translate_ptrace_exit(Tracee *tracee)
     }
 
     /* Now, the initial tracee's event can be handled.  */
-    signal = PTRACEE.event4.proot.pending
-	? handle_tracee_event(ptracee, PTRACEE.event4.proot.value)
-	: PTRACEE.event4.proot.value;
+    signal = PTRACEE.event4.uvroot.pending
+	? handle_tracee_event(ptracee, PTRACEE.event4.uvroot.value)
+	: PTRACEE.event4.uvroot.value;
 
     /* The restarting signal from the ptracer overrides the
-     * restarting signal from PRoot.  */
+     * restarting signal from uvroot.  */
     if (forced_signal != -1)
 	signal = forced_signal;
 

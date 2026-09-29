@@ -1,7 +1,7 @@
 /*
  * -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -462,7 +462,7 @@ detranslate_path(Tracee *tracee, char path[PATH_MAX],
 	if (comparison == PATH1_IS_PREFIX) {
 	    /*
 	     * Some links in "/proc" are generated dynamically by
-	     * the kernel.  PRoot has to emulate some of them.
+	     * the kernel.  uvroot has to emulate some of them.
 	     */
 	    char proc_path[PATH_MAX];
 	    strcpy(proc_path, path);
@@ -662,7 +662,7 @@ static int foreach_fd(const Tracee *tracee, foreach_fd_t callback)
 	/*
 	 * Read the value of this "virtual" link.  Don't use
 	 * readlinkat(2) here since it would require Linux >= 2.6.16
-	 * and Glibc >= 2.4, whereas PRoot is supposed to work on any
+	 * and Glibc >= 2.4, whereas uvroot is supposed to work on any
 	 * Linux 2.6 systems.
 	 */
 
@@ -712,7 +712,7 @@ list_open_fd_callback(const Tracee *tracee, int fd, char path[PATH_MAX])
 }
 
 /**
- * Warn for files that are open. It is useful right after PRoot has
+ * Warn for files that are open. It is useful right after uvroot has
  * attached a process.
  */
 int list_open_fd(const Tracee *tracee)

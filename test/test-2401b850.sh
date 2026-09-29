@@ -11,9 +11,9 @@ chmod +x ${TMP}
 
 # Valgrind prepends "/bin/sh" in front of foreign binaries and uses
 # LD_PRELOAD.
-if $(echo ${PROOT} | grep -q valgrind); then
+if $(echo ${UVROOT} | grep -q valgrind); then
     ENV=$(which env)
-    PROOT="env PROOT_FORCE_FOREIGN_BINARY=1 ${PROOT}"
+    UVROOT="env UVROOT_FORCE_FOREIGN_BINARY=1 ${UVROOT}"
     COMMAND1="-E LD_PRELOAD=.* -0 /bin/sh /bin/sh ${TMP}"
     TEST1="-- -U LD_LIBRARY_PATH -E LD_PRELOAD=.* -0 env ${ENV} LD_LIBRARY_PATH=test1 ${TMP}"
     TEST2="-- -E LD_PRELOAD=.* -E LD_LIBRARY_PATH=test2 -0 /bin/sh /bin/sh ${TMP}"
@@ -35,33 +35,33 @@ else
     COMMAND2="-0 ${TMP} ${TMP} ${TMP2}"
 fi
 
-  ${PROOT} -q true ${TMP}
-! ${PROOT} -q false ${TMP}
+  ${UVROOT} -q true ${TMP}
+! ${UVROOT} -q false ${TMP}
 [ $? -eq 0 ]
 
-  (cd /; ${PROOT} -q ./$(which true) ${TMP})
-! (cd /; ${PROOT} -q ./$(which false) ${TMP})
+  (cd /; ${UVROOT} -q ./$(which true) ${TMP})
+! (cd /; ${UVROOT} -q ./$(which false) ${TMP})
 [ $? -eq 0 ]
 
-HOST_LD_LIBRARY_PATH=$(${PROOT} -q 'echo --' env | grep LD_LIBRARY_PATH)
+HOST_LD_LIBRARY_PATH=$(${UVROOT} -q 'echo --' env | grep LD_LIBRARY_PATH)
 test ! -z "${HOST_LD_LIBRARY_PATH}"
 
 unset LD_LIBRARY_PATH
-${PROOT} -q 'echo --' ${TMP} | grep -- "^-- -U LD_LIBRARY_PATH ${COMMAND1}$"
-${PROOT} -q 'echo --' env LD_LIBRARY_PATH=test1 ${TMP} | grep -- "^${TEST1}$"
-env LD_LIBRARY_PATH=test2 ${PROOT} -q 'echo --' ${TMP} | grep -- "^${TEST2}$"
+${UVROOT} -q 'echo --' ${TMP} | grep -- "^-- -U LD_LIBRARY_PATH ${COMMAND1}$"
+${UVROOT} -q 'echo --' env LD_LIBRARY_PATH=test1 ${TMP} | grep -- "^${TEST1}$"
+env LD_LIBRARY_PATH=test2 ${UVROOT} -q 'echo --' ${TMP} | grep -- "^${TEST2}$"
 
-env LD_LIBRARY_PATH=test2 ${PROOT} -q 'echo --' env LD_LIBRARY_PATH=test1 ${TMP} | grep -- "^${TEST3}$"
+env LD_LIBRARY_PATH=test2 ${UVROOT} -q 'echo --' env LD_LIBRARY_PATH=test1 ${TMP} | grep -- "^${TEST3}$"
 
-${PROOT} -q 'echo --' env LD_TRACE_LOADED_OBJECTS=1 ${TMP} | grep -E -- "^${TEST4}$"
+${UVROOT} -q 'echo --' env LD_TRACE_LOADED_OBJECTS=1 ${TMP} | grep -E -- "^${TEST4}$"
 
-env LD_LIBRARY_PATH=test5 ${PROOT} -q 'echo --' sh -c ${TMP} | grep -- "^${TEST5}$"
-env LD_LIBRARY_PATH=test5 ${PROOT} -q 'echo --' sh -c "sh -c ${TMP}" | grep -- "^${TEST52}$"
-env LD_LIBRARY_PATH=test5 ${PROOT} -q 'echo --' env LD_LIBRARY_PATH=test6 ${TMP} | grep -- "^${TEST6}$"
+env LD_LIBRARY_PATH=test5 ${UVROOT} -q 'echo --' sh -c ${TMP} | grep -- "^${TEST5}$"
+env LD_LIBRARY_PATH=test5 ${UVROOT} -q 'echo --' sh -c "sh -c ${TMP}" | grep -- "^${TEST52}$"
+env LD_LIBRARY_PATH=test5 ${UVROOT} -q 'echo --' env LD_LIBRARY_PATH=test6 ${TMP} | grep -- "^${TEST6}$"
 
 rm -f ${TMP2}
 echo "#!${TMP}" > ${TMP2}
 chmod +x ${TMP2}
-${PROOT} -q 'echo --' ${TMP2} | grep -- "^-- -U LD_LIBRARY_PATH ${COMMAND2}$"
+${UVROOT} -q 'echo --' ${TMP2} | grep -- "^-- -U LD_LIBRARY_PATH ${COMMAND2}$"
 
 rm -fr ${TMP} ${TMP2}

@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -20,6 +20,7 @@
  * 02110-1301 USA.
  */
 
+#include <pthread.h>	/* pthread_*, */
 #include <stdio.h>		/* printf(3), */
 #include <stdbool.h>		/* bool, true, false,  */
 #include <linux/limits.h>	/* ARG_MAX, PATH_MAX, */
@@ -38,6 +39,9 @@
 #include <execinfo.h>		/* backtrace_symbols(3), */
 #endif
 
+/* Number of containers one process can host with --multi.  */
+#define MAX_CONTAINERS 64
+
 #include "cli/cli.h"
 #include "cli/note.h"
 #include "extension/care/extract.h"
@@ -51,7 +55,7 @@
 #include "build.h"
 
 /**
- * Print a (@detailed) usage of PRoot.
+ * Print a (@detailed) usage of uvroot.
  */
 void print_usage(Tracee *tracee, const Cli *cli, bool detailed)
 {
@@ -107,7 +111,7 @@ void print_usage(Tracee *tracee, const Cli *cli, bool detailed)
 }
 
 /**
- * Print the version of PRoot.
+ * Print the version of uvroot.
  */
 void print_version(const Cli *cli)
 {
@@ -132,10 +136,10 @@ static void print_execve_help(const Tracee *tracee, const char *argv0,
     note(tracee, ERROR, SYSTEM, "execve(\"%s\")", argv0);
 
     /* Ubuntu kernel bug?  */
-    if (status == -EPERM && getenv("PROOT_NO_SECCOMP") == NULL) {
+    if (status == -EPERM && getenv("UVROOT_NO_SECCOMP") == NULL) {
 	note(tracee, INFO, USER,
 	     "It seems your kernel contains this bug: https://bugs.launchpad.net/ubuntu/+source/linux/+bug/1202161\n"
-	     "To workaround it, set the env. variable PROOT_NO_SECCOMP to 1.");
+	     "To workaround it, set the env. variable UVROOT_NO_SECCOMP to 1.");
 	return;
     }
 
@@ -320,9 +324,9 @@ static int parse_config(Tracee *tracee, size_t argc, char *const argv[])
 	    cli = get_care_cli(tracee->ctx);
     }
 
-    /* Unknown tool name?  Default to PRoot.  */
+    /* Unknown tool name?  Default to uvroot.  */
     if (cli == NULL)
-	cli = get_proot_cli(tracee->ctx);
+	cli = get_uvroot_cli(tracee->ctx);
     tracee->tool_name = cli->name;
 
     if (argc == 1) {
@@ -343,7 +347,7 @@ static int parse_config(Tracee *tracee, size_t argc, char *const argv[])
 	}
 
 	if (arg[0] != '-')
-	    break;		/* End of PRoot options. */
+	    break;		/* End of uvroot options. */
 
 	options = cli->options;
 	for (j = 0; options[j].class != NULL; j++) {
@@ -431,6 +435,10 @@ static int parse_config(Tracee *tracee, size_t argc, char *const argv[])
     if (status < 0)
 	return -1;
 
+    /* The bindings exist now: resolve --read-only / --ro into host
+     * prefixes, so that the rules cover whole sub-trees.  */
+    resolve_read_only_paths(tracee);
+
     HOOK_CONFIG(post_initialize_bindings);
     HOOK_CONFIG(pre_initialize_cwd);
 
@@ -459,19 +467,16 @@ static int parse_config(Tracee *tracee, size_t argc, char *const argv[])
     return argc_offset;
 }
 
-bool exit_failure = true;
+__thread bool exit_failure = true;
 
-int main(int argc, char *const argv[])
+/**
+ * Run one container: the historical main(), without the allocator setup
+ * and without exiting the process.
+ */
+static int run_container(int argc, char *const argv[])
 {
     Tracee *tracee;
     int status;
-
-    /* Configure the memory allocator.  */
-    talloc_enable_leak_report();
-
-#if defined(TALLOC_VERSION_MAJOR) && TALLOC_VERSION_MAJOR >= 2
-    talloc_set_log_stderr();
-#endif
 
     /* Pre-create the first tracee (pid == 0).  */
     tracee = get_tracee(NULL, 0, true);
@@ -492,17 +497,144 @@ int main(int argc, char *const argv[])
     }
 
     /* Start tracing the first tracee and all its children.  */
-    exit(event_loop());
+    return event_loop();
 
   error:
     TALLOC_FREE(tracee);
 
     if (exit_failure) {
 	fprintf(stderr, "fatal error: see `%s --help`.\n",
-		basename(argv[0]));
-	exit(EXIT_FAILURE);
-    } else
-	exit(EXIT_SUCCESS);
+		basename((char *) argv[0]));
+	return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
+}
+
+typedef struct ContainerJob {
+    int argc;
+    char **argv;
+    int status;
+} ContainerJob;
+
+static void *container_thread(void *data)
+{
+    ContainerJob *job = data;
+
+    /* Each thread hosts its own container: container_current() gives it
+     * a private tracee tree, virtual pid counter and exit status.  */
+    job->status = run_container(job->argc, job->argv);
+    return NULL;
+}
+
+/**
+ * Run several containers as threads of this very process, so that they
+ * share their images through one address space.  The command line is
+ *
+ *     uvroot --multi <container 1> -- <container 2> -- ...
+ *
+ * where each <container N> is a whole uvroot command line, minus the
+ * program name.
+ */
+static int run_multi(int argc, char *const argv[])
+{
+    ContainerJob jobs[MAX_CONTAINERS];
+    pthread_t threads[MAX_CONTAINERS];
+    int count = 0;
+    int cursor;
+    int i;
+    int status = EXIT_SUCCESS;
+
+    for (cursor = 1; cursor < argc; cursor++)
+	if (strcmp(argv[cursor], "--multi") == 0)
+	    break;
+    if (cursor == argc) {
+	fprintf(stderr, "--multi: missing container list.\n");
+	return EXIT_FAILURE;
+    }
+    cursor++;
+
+    while (cursor < argc && count < MAX_CONTAINERS) {
+	int start = cursor;
+	int length;
+
+	while (cursor < argc && strcmp(argv[cursor], "--") != 0)
+	    cursor++;
+	length = cursor - start;
+	if (length == 0) {
+	    if (cursor < argc)
+		cursor++;
+	    continue;
+	}
+
+	jobs[count].argc = length + 1;
+	jobs[count].argv = malloc((size_t) (length + 2) * sizeof(char *));
+	if (jobs[count].argv == NULL) {
+	    fprintf(stderr, "--multi: out of memory.\n");
+	    return EXIT_FAILURE;
+	}
+	jobs[count].argv[0] = argv[0];
+	for (i = 0; i < length; i++)
+	    jobs[count].argv[i + 1] = argv[start + i];
+	jobs[count].argv[length + 1] = NULL;
+	jobs[count].status = EXIT_SUCCESS;
+	count++;
+
+	if (cursor < argc)
+	    cursor++;
+    }
+
+    if (count == 0) {
+	fprintf(stderr, "--multi: no container to run.\n");
+	return EXIT_FAILURE;
+    }
+
+    /* Containers may have to wait for each other while opening the same
+     * image instead of racing for its lock.  */
+    container_mark_multi();
+
+    for (i = 0; i < count; i++) {
+	if (pthread_create(&threads[i], NULL, container_thread, &jobs[i]) != 0) {
+	    fprintf(stderr, "--multi: cannot start container %d.\n", i);
+	    threads[i] = 0;
+	}
+    }
+    for (i = 0; i < count; i++) {
+	if (threads[i] != 0)
+	    pthread_join(threads[i], NULL);
+	if (jobs[i].status != EXIT_SUCCESS)
+	    status = jobs[i].status;
+	free(jobs[i].argv);
+    }
+
+    return status;
+}
+
+int main(int argc, char *const argv[])
+{
+    bool multi = false;
+    int i;
+
+    for (i = 1; i < argc; i++)
+	if (strcmp(argv[i], "--multi") == 0)
+	    multi = true;
+
+    /*
+     * The leak report keeps a process-wide list of every top-level
+     * allocation.  talloc is not thread-safe, so that list cannot be
+     * maintained while several containers are hosted by this process.
+     */
+    if (!multi) {
+	talloc_enable_leak_report();
+
+#if defined(TALLOC_VERSION_MAJOR) && TALLOC_VERSION_MAJOR >= 2
+	talloc_set_log_stderr();
+#endif
+    }
+
+    if (multi)
+	return run_multi(argc, (char *const *) argv);
+
+    return run_container(argc, (char *const *) argv);
 }
 
 /**

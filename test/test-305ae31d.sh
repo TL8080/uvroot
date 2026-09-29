@@ -4,6 +4,6 @@ fi
 
 TMP=$(mcookie)
 ln -s  /proc/self/mounts ${TMP}
-${PROOT} -b ${TMP} true
+${UVROOT} -b ${TMP} true
 rm ${TMP}
 

@@ -239,7 +239,7 @@ The output archive contains the following files:
     directory where all the files used during the original execution
     were archived, they will be required for the reproduced execution.
 
-``proot``
+``uvroot``
     virtualization tool invoked by re-execute.sh to confine the
     reproduced execution into the rootfs.  It also emulates the
     missing kernel features if needed.
@@ -264,11 +264,11 @@ Example
 =======
 
 In this example, Alice wants to report to Bob that the compilation of
-PRoot v2.4 raises an unexpected warning::
+uvroot v2.4 raises an unexpected warning::
 
-    alice$ make -C PRoot-2.4/src/
+    alice$ make -C uvroot-2.4/src/
     
-    make: Entering directory `PRoot-2.4/src'
+    make: Entering directory `uvroot-2.4/src'
     [...]
     CC    path/proc.o
     ./path/proc.c: In function 'readlink_proc':
@@ -280,9 +280,9 @@ Slackware 13.37 on x86_64.  Both distros are supposed to be shipped
 with GCC 4.5.2, however Bob is not able to reproduce this issue on his
 system::
 
-    bob$ make -C PRoot-2.4/src/
+    bob$ make -C uvroot-2.4/src/
     
-    make: Entering directory `PRoot-2.4/src'
+    make: Entering directory `uvroot-2.4/src'
     [...]
     CC    path/proc.o
     [...]
@@ -291,13 +291,13 @@ Since they don't have much time to investigate this issue by iterating
 between each other, they decide to use CARE.  First, Alice prepends
 ``care`` to her command::
 
-    alice$ care make -C PRoot-2.4/src/
+    alice$ care make -C uvroot-2.4/src/
     
     care info: concealed path: $HOME
     care info: concealed path: /tmp
     care info: revealed path: $PWD
     care info: ----------------------------------------------------------------------
-    make: Entering directory `PRoot-2.4/src'
+    make: Entering directory `uvroot-2.4/src'
     [...]
     CC    path/proc.o
     ./path/proc.c: In function 'readlink_proc':
@@ -315,7 +315,7 @@ should be able to reproduce her issue on his system::
     [...]
     bob$ ./care-130213072430/re-execute.sh
 
-    make: Entering directory `PRoot-2.4/src'
+    make: Entering directory `uvroot-2.4/src'
     [...]
     CC    path/proc.o
     ./path/proc.c: In function 'readlink_proc':
@@ -427,22 +427,22 @@ example::
     [...]
     foo/re-execute.sh
     foo/README.txt
-    foo/proot
+    foo/uvroot
 
 
 Downloads
 =========
 
-CARE is heavily based on PRoot_, that's why they are both hosted in
+CARE is heavily based on uvroot_, that's why they are both hosted in
 the same repository: https://github.com/proot-me/proot. Previous CARE releases were packaged at https://github.com/proot-me/proot-static-build/releases, however, that repository has since been archived. The latest builds can be found under the job artifacts for the `GitLab CI/CD Pipelines <https://gitlab.com/proot/proot/pipelines>`_ for each commit.
 
-.. _PRoot: https://proot-me.github.io
+.. _uvroot: https://proot-me.github.io
 
 Colophon
 ========
 
 Visit https://proot-me.github.io/care for help, bug reports, suggestions, patches, ...
-Copyright (C) 2023 PRoot Developers, licensed under GPL v2 or later.
+Copyright (C) 2023 uvroot Developers, licensed under GPL v2 or later.
 
 ::
 

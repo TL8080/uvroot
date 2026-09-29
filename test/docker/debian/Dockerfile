@@ -1,9 +1,9 @@
 FROM debian:13
 
-COPY . /usr/src/proot
+COPY . /usr/src/uvroot
 
-RUN useradd -m -u 1000 proot && \
-    chown -R proot:proot /usr/src/proot
+RUN useradd -m -u 1000 uvroot && \
+    chown -R uvroot:uvroot /usr/src/uvroot
 
-WORKDIR /usr/src/proot
-USER proot
+WORKDIR /usr/src/uvroot
+USER uvroot

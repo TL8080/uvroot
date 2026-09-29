@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -35,8 +35,8 @@ typedef enum {
     /* A guest path passed as an argument of the current syscall
      * is about to be translated: "(char *) data1" is the base for
      * "(char *) data2" -- the guest path -- if this latter is
-     * relative.  If the extension returns > 0, then PRoot skips
-     * its own handling.  If the extension returns < 0, then PRoot
+     * relative.  If the extension returns > 0, then uvroot skips
+     * its own handling.  If the extension returns < 0, then uvroot
      * reports this errno as-is.  */
     GUEST_PATH,
 
@@ -44,46 +44,46 @@ typedef enum {
      * translation of a guest path: "(char *) data1" is the
      * canonicalized host path and "(bool) data2" is true if it is
      * the last iteration.  Note that several host paths are accessed
-     * for a given guest path since PRoot has to walk along all
+     * for a given guest path since uvroot has to walk along all
      * parent directories and symlinks in order to translate it.
-     * If the extension returns < 0, then PRoot reports this errno
+     * If the extension returns < 0, then uvroot reports this errno
      * as-is.  */
     HOST_PATH,
 
-    /* The tracee enters a syscall, and PRoot hasn't do anything
-     * yet.  If the extension returns > 0, then PRoot skips its
-     * own handling.  If the extension returns < 0, then PRoot
+    /* The tracee enters a syscall, and uvroot hasn't do anything
+     * yet.  If the extension returns > 0, then uvroot skips its
+     * own handling.  If the extension returns < 0, then uvroot
      * cancels the syscall and reports this errno to the
      * tracee.  */
     SYSCALL_ENTER_START,
 
-    /* The tracee enters a syscall, and PRoot has already handled
+    /* The tracee enters a syscall, and uvroot has already handled
      * it: "(int) data1" is the current status, it is < 0 when
      * something went wrong.  If the extension returns < 0, then
-     * PRoot cancels the syscall and reports this errno to the
+     * uvroot cancels the syscall and reports this errno to the
      * tracee.  */
     SYSCALL_ENTER_END,
 
-    /* The tracee exits a syscall, and PRoot hasn't do anything
-     * yet.  If the extension returns > 0, then PRoot skips its
-     * own handling.  If the extension returns < 0, then PRoot
+    /* The tracee exits a syscall, and uvroot hasn't do anything
+     * yet.  If the extension returns > 0, then uvroot skips its
+     * own handling.  If the extension returns < 0, then uvroot
      * reports this errno to the tracee.  */
     SYSCALL_EXIT_START,
 
-    /* The tracee exits a syscall, and PRoot has already handled
-     * it.  If the extension returns < 0, then PRoot reports this
+    /* The tracee exits a syscall, and uvroot has already handled
+     * it.  If the extension returns < 0, then uvroot reports this
      * errno to the tracee.  */
     SYSCALL_EXIT_END,
 
     /* The canonicalization succeeds: "(char *) data1" is the
      * translated path from the host point-of-view. It can be
      * substituted by the extension. If the extension returns <
-     * 0, then PRoot reports this errno as-is.  */
+     * 0, then uvroot reports this errno as-is.  */
     TRANSLATED_PATH,
 
     /* The tracee is stopped either because of a syscall or a
      * signal: "(int) data1" is its new status as reported by
-     * waitpid(2).  If the extension returns != 0, then PRoot
+     * waitpid(2).  If the extension returns != 0, then uvroot
      * skips its own handling.  */
     NEW_STATUS,
 
@@ -105,19 +105,19 @@ typedef enum {
     INHERIT_CHILD,
 
     /* The tracee enters a "chained" syscall, that is, an
-     * unrequested syscall inserted by PRoot after an actual
-     * syscall.  If the extension returns < 0, then PRoot cancels
+     * unrequested syscall inserted by uvroot after an actual
+     * syscall.  If the extension returns < 0, then uvroot cancels
      * the syscall and reports this errno to the tracee.  */
     SYSCALL_CHAINED_ENTER,
 
     /* The tracee exists a "chained" syscall, that is, an
-     * unrequested syscall inserted by PRoot after an actual
+     * unrequested syscall inserted by uvroot after an actual
      * syscall.  */
     SYSCALL_CHAINED_EXIT,
 
     /* Initialize the extension: "(const char *) data1" is its
      * argument that was passed to the command-line interface.  If
-     * the extension returns < 0, then PRoot removed it.  */
+     * the extension returns < 0, then uvroot removed it.  */
     INITIALIZATION,
 
     /* The extension is not attached to its tracee anymore
@@ -203,6 +203,8 @@ extern int python_callback(Extension * extension, ExtensionEvent event,
 extern int link2symlink_callback(Extension * extension,
 				 ExtensionEvent event, intptr_t d1,
 				 intptr_t d2);
+extern int vperm_callback(Extension * extension, ExtensionEvent event,
+			  intptr_t d1, intptr_t d2);
 
 /* Added extensions.  */
 /**

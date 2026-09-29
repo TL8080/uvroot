@@ -5,7 +5,7 @@ fi
 if [ ! -e $CARE ]; then
     exit 125;
 fi
-unset PROOT
+unset UVROOT
 
 TMP=/tmp/$(mcookie)
 mkdir ${TMP}

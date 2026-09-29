@@ -1,7 +1,7 @@
 /*
  * -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -427,9 +427,9 @@ expand_runner(Tracee *tracee, char host_path[PATH_MAX],
 	    return status;
 
 	/*
-	 * Assuming PRoot was invoked this way:
+	 * Assuming uvroot was invoked this way:
 	 *
-	 * proot -q 'qemu-arm -cpu cortex-a9' ...
+	 * uvroot -q 'qemu-arm -cpu cortex-a9' ...
 	 *
 	 * a call to:
 	 *
@@ -518,7 +518,7 @@ static char *extract_loader(const Tracee *tracee, bool wants_32bit_version)
     char *loader_path = NULL;
     FILE *file = NULL;
 
-    file = open_temp_file(NULL, "prooted");
+    file = open_temp_file(NULL, "uvrooted");
     if (file == NULL)
 	goto end;
     fd = fileno(file);
@@ -563,7 +563,7 @@ static char *extract_loader(const Tracee *tracee, bool wants_32bit_version)
 	     "is mounted with no execution permission.",
 	     get_temp_directory());
 	note(tracee, INFO, USER,
-	     "Please set PROOT_TMP_DIR env. variable to an alternate "
+	     "Please set UVROOT_TMP_DIR env. variable to an alternate "
 	     "location ('%s/tmp' for example).", get_root(tracee));
 	goto end;
     }
@@ -600,14 +600,14 @@ static inline const char *get_loader_path(const Tracee *tracee)
 
     if (IS_CLASS32(tracee->load_info->elf_header)) {
 	loader32_path =
-	    loader32_path ? : getenv("PROOT_LOADER_32") ? :
+	    loader32_path ? : getenv("UVROOT_LOADER_32") ? :
 	    extract_loader(tracee, true);
 	return loader32_path;
     } else
 #endif
     {
 	loader_path =
-	    loader_path ? : getenv("PROOT_LOADER") ? :
+	    loader_path ? : getenv("UVROOT_LOADER") ? :
 	    extract_loader(tracee, false);
 	return loader_path;
     }

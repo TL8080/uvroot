@@ -36,7 +36,7 @@ generate () {
     done
 }
 
-if [ -z ${PROOT_STAGE2} ]; then
+if [ -z ${UVROOT_STAGE2} ]; then
     create_components ()
     {
 	touch r${1}         2>/dev/null
@@ -53,7 +53,7 @@ if [ -z ${PROOT_STAGE2} ]; then
 
     generate $REF
 
-    env PROOT_STAGE2=$REF ${PROOT} -w ${PWD} sh ./$0
+    env UVROOT_STAGE2=$REF ${UVROOT} -w ${PWD} sh ./$0
     exit $?
 fi
 
@@ -63,5 +63,5 @@ mkdir -p /tmp
 generate $TMP
 
 set -e
-cmp $TMP $PROOT_STAGE2
-rm $TMP $PROOT_STAGE2
+cmp $TMP $UVROOT_STAGE2
+rm $TMP $UVROOT_STAGE2

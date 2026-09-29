@@ -15,7 +15,7 @@ int main()
 	{.tv_sec = 52353,.tv_usec = 0 },
 	{.tv_sec = 52353,.tv_usec = 0 }
     };
-    char tmp[] = "proot-XXXXXX";
+    char tmp[] = "uvroot-XXXXXX";
 
     mktemp(tmp);
     if (tmp[0] == '\0')

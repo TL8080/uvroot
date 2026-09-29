@@ -20,4 +20,4 @@ RUN dnf install -y \
       swig \
       uthash-devel
 
-USER proot
+USER uvroot

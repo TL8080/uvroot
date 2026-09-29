@@ -4,4 +4,4 @@ fi
 
 TRUE=$(realpath $(which true))
 
-env PROOT_FORCE_FOREIGN_BINARY=1 ${PROOT} -q ${ROOTFS}/bin/puts_proc_self_exe ${TRUE} | grep ^${TRUE}$
+env UVROOT_FORCE_FOREIGN_BINARY=1 ${UVROOT} -q ${ROOTFS}/bin/puts_proc_self_exe ${TRUE} | grep ^${TRUE}$

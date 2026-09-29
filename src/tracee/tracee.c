@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -50,8 +50,7 @@
 #define __W_STOPCODE(sig)	((sig) <<8 | 0x7f)
 #endif
 
-typedef LIST_HEAD(tracees, tracee) Tracees;
-static Tracees tracees;
+/* The tracees now belong to a Container (see tracee/container.h).  */
 
 
 /**
@@ -103,7 +102,7 @@ static int remove_tracee(Tracee *tracee)
 
     /* This could be optimize by using a dedicated list of
      * children and ptracees.  */
-    LIST_FOREACH(relative, &tracees, link) {
+    LIST_FOREACH(relative, &tracee->container->tracees, link) {
 	/* Its children are now orphan.  */
 	if (relative->parent == tracee)
 	    relative->parent = NULL;
@@ -113,13 +112,13 @@ static int remove_tracee(Tracee *tracee)
 	    /* Release the pending event, if any.  */
 	    relative->as_ptracee.ptracer = NULL;
 
-	    if (relative->as_ptracee.event4.proot.pending) {
+	    if (relative->as_ptracee.event4.uvroot.pending) {
 		event = handle_tracee_event(relative,
 					    relative->as_ptracee.
-					    event4.proot.value);
+					    event4.uvroot.value);
 		(void) restart_tracee(relative, event);
 	    } else if (relative->as_ptracee.event4.ptracer.pending) {
-		event = relative->as_ptracee.event4.proot.value;
+		event = relative->as_ptracee.event4.uvroot.value;
 		(void) restart_tracee(relative, event);
 	    }
 
@@ -211,15 +210,13 @@ Tracee *new_dummy_tracee(TALLOC_CTX *context)
     return NULL;
 }
 
-static uint64_t next_vpid = 1;
-
 /**
  * Allocate a new entry for the tracee @pid, then set its destructor
  * and add it to the list of tracees.  This function returns NULL if
  * an error occurred (ENOMEM), otherwise it returns the newly
  * allocated structure.
  */
-static Tracee *new_tracee(pid_t pid)
+static Tracee *new_tracee(Container *container, pid_t pid)
 {
     Tracee *tracee;
 
@@ -229,10 +226,11 @@ static Tracee *new_tracee(pid_t pid)
 
     talloc_set_destructor(tracee, remove_tracee);
 
+    tracee->container = container;
     tracee->pid = pid;
-    tracee->vpid = next_vpid++;
+    tracee->vpid = container->next_vpid++;
 
-    LIST_INSERT_HEAD(&tracees, tracee, link);
+    LIST_INSERT_HEAD(&container->tracees, tracee, link);
 
     tracee->life_context = talloc_new(tracee);
 
@@ -250,6 +248,8 @@ Tracee *get_ptracee(const Tracee *ptracer, pid_t pid, bool only_stopped,
 		    bool only_with_pevent, word_t wait_options)
 {
     Tracee *ptracee;
+    Container *container = (ptracer != NULL)
+	? ptracer->container : container_current();
 
     /* Return zombies first.  */
     LIST_FOREACH(ptracee, &PTRACER.zombies, link) {
@@ -264,7 +264,7 @@ Tracee *get_ptracee(const Tracee *ptracer, pid_t pid, bool only_stopped,
 	return ptracee;
     }
 
-    LIST_FOREACH(ptracee, &tracees, link) {
+    LIST_FOREACH(ptracee, &container->tracees, link) {
 	/* Discard tracees that don't have this ptracer.  */
 	if (PTRACEE.ptracer != ptracer)
 	    continue;
@@ -326,6 +326,7 @@ bool has_ptracees(const Tracee *ptracer, pid_t pid, word_t wait_options)
  */
 Tracee *get_tracee(const Tracee *current_tracee, pid_t pid, bool create)
 {
+    Container *container = container_current();
     Tracee *tracee;
 
     /* Don't reset the memory collector if the searched tracee is
@@ -334,7 +335,7 @@ Tracee *get_tracee(const Tracee *current_tracee, pid_t pid, bool create)
     if (current_tracee != NULL && current_tracee->pid == pid)
 	return (Tracee *) current_tracee;
 
-    LIST_FOREACH(tracee, &tracees, link) {
+    LIST_FOREACH(tracee, &container->tracees, link) {
 	if (tracee->pid == pid) {
 	    /* Flush then allocate a new memory collector.  */
 	    TALLOC_FREE(tracee->ctx);
@@ -344,7 +345,7 @@ Tracee *get_tracee(const Tracee *current_tracee, pid_t pid, bool create)
 	}
     }
 
-    return (create ? new_tracee(pid) : NULL);
+    return (create ? new_tracee(container, pid) : NULL);
 }
 
 /**
@@ -368,10 +369,11 @@ void terminate_tracee(Tracee *tracee)
  */
 void free_terminated_tracees()
 {
+    Container *container = container_current();
     Tracee *next;
 
     /* Items can't be deleted when using LIST_FOREACH.  */
-    next = tracees.lh_first;
+    next = container->tracees.lh_first;
     while (next != NULL) {
 	Tracee *tracee = next;
 	next = tracee->link.le_next;
@@ -540,7 +542,7 @@ int new_child(Tracee *parent, word_t clone_flags)
 	/* Bindings are shared across file-system name-spaces since a
 	 * "mount --bind" made by a process affects all other processes
 	 * under Linux.  Actually they are copied when a sub
-	 * reconfiguration occured (nested proot or chroot(2)).  */
+	 * reconfiguration occured (nested uvroot or chroot(2)).  */
 	child->fs->bindings.guest =
 	    talloc_reference(child->fs, parent->fs->bindings.guest);
 	child->fs->bindings.host =
@@ -561,6 +563,17 @@ int new_child(Tracee *parent, word_t clone_flags)
 
     child->tool_name = parent->tool_name;
 
+    /*
+     * --ro / --read-only are path rules of the container, so every
+     * process it starts must obey them, not only the one that received
+     * the command line.
+     */
+    child->read_only = parent->read_only;
+    if (parent->read_only.paths != NULL)
+	(void) talloc_reference(child, parent->read_only.paths);
+    if (parent->read_only.hosts != NULL)
+	(void) talloc_reference(child, parent->read_only.hosts);
+
     inherit_extensions(child, parent, clone_flags);
 
     /* Restart the child tracee if it was already alive but
@@ -579,10 +592,10 @@ int new_child(Tracee *parent, word_t clone_flags)
 		handle_ptracee_event(child, __W_STOPCODE(SIGSTOP));
 
 	    /* Note that this event was already handled by
-	     * PRoot since child->as_ptracee.ptracer was
+	     * uvroot since child->as_ptracee.ptracer was
 	     * NULL up to now.  */
-	    child->as_ptracee.event4.proot.pending = false;
-	    child->as_ptracee.event4.proot.value = 0;
+	    child->as_ptracee.event4.uvroot.pending = false;
+	    child->as_ptracee.event4.uvroot.value = 0;
 	}
 
 	if (!keep_stopped)
@@ -636,8 +649,15 @@ int swap_config(Tracee *tracee1, Tracee *tracee2)
 /* Send the KILL signal to all tracees.  */
 void kill_all_tracees()
 {
-    Tracee *tracee;
+    Container *container;
 
-    LIST_FOREACH(tracee, &tracees, link)
-	kill(tracee->pid, SIGKILL);
+    /* A fatal signal stops the whole process, hence every container of
+     * it, not only the one hosted by the interrupted thread.  */
+    for (container = container_first(); container != NULL;
+	 container = container_next(container)) {
+	Tracee *tracee;
+
+	LIST_FOREACH(tracee, &container->tracees, link)
+	    kill(tracee->pid, SIGKILL);
+    }
 }

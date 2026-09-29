@@ -8,10 +8,10 @@ TEST_ROOT=$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")
 # The root directory of this project.
 PROJECT_ROOT="$TEST_ROOT/.."
 
-# Path to the proot binary, matching the $PROOT convention already used
+# Path to the uvroot binary, matching the $UVROOT convention already used
 # by test/GNUmakefile.
-if [ -z "${PROOT}" ]; then
-    PROOT="$PROJECT_ROOT/src/proot"
+if [ -z "${UVROOT}" ]; then
+    UVROOT="$PROJECT_ROOT/src/uvroot"
 fi
 
 # Path to the test rootfs built by `make -C test setup`, matching the
@@ -32,9 +32,9 @@ function runp() {
     echo "output:  $output" >&2
 }
 
-# A wrapper function for the proot binary.
-function proot() {
-    "$PROOT" "$@"
+# A wrapper function for the uvroot binary.
+function uvroot() {
+    "$UVROOT" "$@"
 }
 
 # Compile a single C source file ($2) to a statically linked binary ($1).

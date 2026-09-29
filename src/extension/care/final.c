@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -187,30 +187,30 @@ static int archive_re_execute_sh(Care *care)
 	C("'%s'", care->command[i]);
     N("");
 
-    N("PROOT=\"${PROOT-$(dirname $0)/proot}\"");
+    N("UVROOT=\"${UVROOT-$(dirname $0)/uvroot}\"");
     N("");
 
-    N("if [ ! -e ${PROOT} ]; then");
-    N("    PROOT=$(which proot)");
+    N("if [ ! -e ${UVROOT} ]; then");
+    N("    UVROOT=$(which uvroot)");
     N("fi");
     N("");
 
-    N("if [ -z ${PROOT} ]; then");
+    N("if [ -z ${UVROOT} ]; then");
     N("    echo '**********************************************************************'");
-    N("    echo '\"proot\" command not found, please get it from https://proot-me.github.io'");
+    N("    echo '\"uvroot\" command not found, please get it from https://proot-me.github.io'");
     N("    echo '**********************************************************************'");
     N("    exit 1");
     N("fi");
     N("");
 
-    N("if [ x$PROOT_NO_SECCOMP != x ]; then");
-    N("    PROOT_NO_SECCOMP=\"PROOT_NO_SECCOMP=$PROOT_NO_SECCOMP\"");
+    N("if [ x$UVROOT_NO_SECCOMP != x ]; then");
+    N("    UVROOT_NO_SECCOMP=\"UVROOT_NO_SECCOMP=$UVROOT_NO_SECCOMP\"");
     N("fi");
     N("");
 
     C("env --ignore-environment");
-    C("PROOT_IGNORE_MISSING_BINDINGS=1");
-    C("$PROOT_NO_SECCOMP");
+    C("UVROOT_IGNORE_MISSING_BINDINGS=1");
+    C("$UVROOT_NO_SECCOMP");
 
     for (i = 0; environ[i] != NULL; i++) {
 	const char *volatile_envar;
@@ -224,7 +224,7 @@ static int archive_re_execute_sh(Care *care)
 	}
     }
 
-    C("\"${PROOT-$(dirname $0)/proot}\"");
+    C("\"${UVROOT-$(dirname $0)/uvroot}\"");
 
     if (care->volatile_paths != NULL) {
 	/* If a volatile path is relative to $HOME, use an
@@ -270,10 +270,10 @@ static int archive_re_execute_sh(Care *care)
       care->last_exit_status);
     N("echo \"care: The reproduced execution didn't return the same exit status as the\"");
     N("echo \"care: original execution.  If it is unexpected, please report this bug\"");
-    N("echo \"care: to CARE/PRoot developers:\"");
+    N("echo \"care: to CARE/uvroot developers:\"");
     N("echo \"care:     * mailing list: reproducible@googlegroups.com; or\"");
     N("echo \"care:     * forum: https://groups.google.com/forum/?fromgroups#!forum/reproducible; or\"");
-    N("echo \"care:     * issue tracker: https://github.com/cedric-vincent/PRoot/issues/\"");
+    N("echo \"care:     * issue tracker: https://github.com/cedric-vincent/uvroot/issues/\"");
     N("fi");
     N("");
     N("exit $status");
@@ -344,7 +344,7 @@ static int archive_readme_txt(const Care *care)
     N("    directory where all the files used during the original execution");
     N("    were archived, they will be required for the reproduced execution.");
     N("");
-    N("proot");
+    N("uvroot");
     N("    virtualization tool invoked by re-execute.sh to confine the");
     N("    reproduced execution into the rootfs.  It also emulates the");
     N("    missing kernel features if needed.");
@@ -368,7 +368,7 @@ static int archive_myself(const Care *care) UNUSED;
 
 /**
  * Archive the content pointed to by "/proc/self/exe" in
- * "@care->archive:@care->prefix/proot".  Note: this function is
+ * "@care->archive:@care->prefix/uvroot".  Note: this function is
  * called in @care's destructor.
  */
 static int archive_myself(const Care *care)
@@ -395,9 +395,9 @@ static int archive_myself(const Care *care)
 	return status;
     }
 
-    location = talloc_asprintf(care, "%s/proot", care->prefix);
+    location = talloc_asprintf(care, "%s/uvroot", care->prefix);
     if (location == NULL) {
-	note(NULL, ERROR, INTERNAL, "can't allocate location for 'proot'");
+	note(NULL, ERROR, INTERNAL, "can't allocate location for 'uvroot'");
 	return -1;
     }
 
@@ -405,7 +405,7 @@ static int archive_myself(const Care *care)
 }
 
 /**
- * Archive "re-execute.sh" & "proot" from @care.  This function
+ * Archive "re-execute.sh" & "uvroot" from @care.  This function
  * always returns 0.  Note: this is a Talloc destructor.
  */
 int finalize_care(Care *care)
@@ -430,10 +430,10 @@ int finalize_care(Care *care)
 	note(NULL, WARNING, INTERNAL, "can't archive 'README.txt'");
 
 #if defined(CARE_BINARY_IS_PORTABLE)
-    /* Archive "care" as "proot", these are the same binary. */
+    /* Archive "care" as "uvroot", these are the same binary. */
     status = archive_myself(care);
     if (status < 0)
-	note(NULL, WARNING, INTERNAL, "can't archive 'proot'");
+	note(NULL, WARNING, INTERNAL, "can't archive 'uvroot'");
 #endif
 
     finalize_archive(care->archive);

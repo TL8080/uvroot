@@ -15,10 +15,10 @@ rm -f ${TMP}/true
 
 chmod -w ${TMP}
 
-! env PROOT_TMP_DIR=${TMP} ${PROOT} true
+! env UVROOT_TMP_DIR=${TMP} ${UVROOT} true
 [ $? -eq 0 ]
 
 chmod +w ${TMP}
-env PROOT_TMP_DIR=${TMP} ${PROOT} true
+env UVROOT_TMP_DIR=${TMP} ${UVROOT} true
 
 rm -fr ${TMP}

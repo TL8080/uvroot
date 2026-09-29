@@ -6,4 +6,4 @@ RUN dnf install -y \
       clang \
       clang-analyzer
 
-USER proot
+USER uvroot

@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -81,7 +81,7 @@ static const char *stringify_event(int event)
 /**
  * Translate the wait syscall made by @ptracer into a "void" syscall
  * if the expected pid is one of its ptracees, in order to emulate the
- * ptrace mechanism within PRoot.  This function returns -errno if an
+ * ptrace mechanism within uvroot.  This function returns -errno if an
  * error occured (unsupported request), otherwise 0.
  */
 int translate_wait_enter(Tracee *ptracer)
@@ -133,14 +133,14 @@ static int update_wait_status(Tracee *ptracer, Tracee *ptracee)
 	&& (WIFEXITED(PTRACEE.event4.ptracer.value)
 	    || WIFSIGNALED(PTRACEE.event4.ptracer.value))) {
 	/* ... So hide this terminating event (toward its
-	 * tracer, ie. PRoot) and make the second one appear
+	 * tracer, ie. uvroot) and make the second one appear
 	 * (towards its parent, ie. the ptracer).  This will
 	 * ensure its exit status is collected from a kernel
 	 * point-of-view (ie. it doesn't stay a zombie
 	 * forever).  */
 	restart_original_syscall(ptracer);
 
-	/* Detach this ptracee from its ptracer, PRoot doesn't
+	/* Detach this ptracee from its ptracer, uvroot doesn't
 	 * have anything else to emulate.  */
 	detach_from_ptracer(ptracee);
 
@@ -237,16 +237,16 @@ int translate_wait_exit(Tracee *ptracer, bool *set_result)
  */
 bool handle_ptracee_event(Tracee *ptracee, int event)
 {
-    bool handled_by_proot_first = false;
+    bool handled_by_uvroot_first = false;
     Tracee *ptracer = PTRACEE.ptracer;
     bool keep_stopped;
 
     assert(ptracer != NULL);
 
     /* Remember what the event initially was, this will be
-     * required by PRoot to handle this event later.  */
-    PTRACEE.event4.proot.value = event;
-    PTRACEE.event4.proot.pending = true;
+     * required by uvroot to handle this event later.  */
+    PTRACEE.event4.uvroot.value = event;
+    PTRACEE.event4.uvroot.pending = true;
 
     /* By default, this ptracee should be kept stopped until its
      * ptracer restarts it.  */
@@ -262,7 +262,7 @@ bool handle_ptracee_event(Tracee *ptracee, int event)
 	    if ((PTRACEE.options & PTRACE_O_TRACESYSGOOD) == 0)
 		event &= ~(0x80 << 8);
 
-	    handled_by_proot_first = IS_IN_SYSEXIT(ptracee);
+	    handled_by_uvroot_first = IS_IN_SYSEXIT(ptracee);
 	    break;
 
 #define PTRACE_EVENT_VFORKDONE PTRACE_EVENT_VFORK_DONE
@@ -271,7 +271,7 @@ bool handle_ptracee_event(Tracee *ptracee, int event)
 			if ((PTRACEE.options & PTRACE_O_TRACE ##name) == 0)	\
 				return false;					\
 			PTRACEE.tracing_started = true;				\
-			handled_by_proot_first = true;				\
+			handled_by_uvroot_first = true;				\
 			break;
 
 	    CASE_FILTER_EVENT(FORK);
@@ -296,7 +296,7 @@ bool handle_ptracee_event(Tracee *ptracee, int event)
 	}
     }
     /* In these cases, the ptracee isn't really alive anymore.  To
-     * ensure it will not be in limbo, PRoot restarts it whether
+     * ensure it will not be in limbo, uvroot restarts it whether
      * its ptracer is waiting for it or not.  */
     else if (WIFEXITED(event) || WIFSIGNALED(event)) {
 	PTRACEE.tracing_started = true;
@@ -311,11 +311,11 @@ bool handle_ptracee_event(Tracee *ptracee, int event)
 	return false;
 
     /* Under some circumstances, the event must be handled by
-     * PRoot first.  */
-    if (handled_by_proot_first) {
+     * uvroot first.  */
+    if (handled_by_uvroot_first) {
 	int signal;
-	signal = handle_tracee_event(ptracee, PTRACEE.event4.proot.value);
-	PTRACEE.event4.proot.value = signal;
+	signal = handle_tracee_event(ptracee, PTRACEE.event4.uvroot.value);
+	PTRACEE.event4.uvroot.value = signal;
 
 	/* The computed signal is always 0 since we can come
 	 * in this block only on sysexit and special events

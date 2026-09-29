@@ -5,8 +5,8 @@ fi
 TMP=/tmp/$(mcookie)
 touch ${TMP}
 
-${PROOT} -0 stat -c %u:%g ${TMP} | grep 0:0
+${UVROOT} -0 stat -c %u:%g ${TMP} | grep 0:0
 
-${PROOT} -i 123:456 stat -c %u:%g ${TMP} | grep 123:456
+${UVROOT} -i 123:456 stat -c %u:%g ${TMP} | grep 123:456
 
 rm ${TMP}

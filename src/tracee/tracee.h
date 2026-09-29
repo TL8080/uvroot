@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -31,6 +31,7 @@
 #include <talloc.h>		/* talloc_*, */
 #include <stdint.h>		/* *int*_t, */
 #include <sys/wait.h>		/* __WAIT_* */
+#include "tracee/container.h"	/* Container, */
 #include "arch.h"		/* word_t, user_regs_struct, */
 #include "compat.h"
 
@@ -67,6 +68,7 @@ typedef struct {
 
     /* Current working directory, à la /proc/self/pwd.  */
     char *cwd;
+
 } FileSystemNameSpace;
 
 /* Virtual heap, emulated with a regular memory mapping.  */
@@ -105,6 +107,10 @@ typedef struct tracee {
     /* Parent of this tracee, NULL if none.  */
     struct tracee *parent;
 
+    /* The container this tracee belongs to (its tracee tree, its
+     * virtual pid counter, its exit status, ...).  */
+    struct Container *container;
+
     /* Is it a "clone", i.e has the same parent as its creator.  */
     bool clone;
 
@@ -130,7 +136,7 @@ typedef struct tracee {
 	struct {
 #define STRUCT_EVENT struct { int value; bool pending; }
 
-	    STRUCT_EVENT proot;
+	    STRUCT_EVENT uvroot;
 	    STRUCT_EVENT ptracer;
 	} event4;
 
@@ -167,6 +173,17 @@ typedef struct tracee {
 	SIGSTOP_PENDING,	/* Block SIGSTOP until the parent is unknown.  */
     } sigstop;
 
+
+    /* Mappings that must not be modified: --read-only marks all of
+     * them, --ro=<guest> marks one.  */
+    struct {
+	const char **paths;	/* guest paths given by --ro */
+	size_t count;
+	bool all;		/* --read-only */
+	const char **hosts;	/* resolved host prefixes */
+	size_t hosts_count;
+    } read_only;
+
     /* Context used to collect all the temporary dynamic memory
      * allocations.  */
     TALLOC_CTX *ctx;
@@ -192,7 +209,7 @@ typedef struct tracee {
 	const char *paths;
     } reconf;
 
-    /* Unrequested syscalls inserted by PRoot after an actual
+    /* Unrequested syscalls inserted by uvroot after an actual
      * syscall.  */
     struct {
 	struct chained_syscalls *syscalls;

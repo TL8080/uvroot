@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -75,10 +75,10 @@ void translate_brk_enter(Tracee *tracee)
 	Mapping *mappings;
 	Mapping *bss;
 
-	/* From PRoot's point-of-view this is the first time this
+	/* From uvroot's point-of-view this is the first time this
 	 * tracee calls brk(2), although an address was specified.
 	 * This is not supposed to happen the first time.  It is
-	 * likely because this tracee is the very first child of PRoot
+	 * likely because this tracee is the very first child of uvroot
 	 * but the first execve(2) didn't happen yet (so this is not
 	 * its first call to brk(2)).  For instance, the installation
 	 * of seccomp filters is made after this very first process is

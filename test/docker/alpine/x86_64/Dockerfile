@@ -22,4 +22,4 @@ RUN apk add --no-cache \
       talloc-dev \
       uthash-dev
 
-USER proot
+USER uvroot

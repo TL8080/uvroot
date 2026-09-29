@@ -4,4 +4,4 @@ fi
 
 RESULT=$(realpath ${ROOTFS})
 
-${PROOT} -b /proc -r ${ROOTFS} readlink /proc/self/root | grep ^${RESULT}$
+${UVROOT} -b /proc -r ${ROOTFS} readlink /proc/self/root | grep ^${RESULT}$

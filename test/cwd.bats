@@ -10,14 +10,14 @@ load helper
 
 
 @test "test -w sets the initial working directory" {
-    run proot -r "$ROOTFS" -w /bin /bin/pwd
+    run uvroot -r "$ROOTFS" -w /bin /bin/pwd
     [ "$status" -eq 0 ]
     [ "$output" = "/bin" ]
 }
 
 
 @test "test chdir(2) inside the traced process" {
-    run proot -r "$ROOTFS" -w / /bin/chdir_getcwd /bin
+    run uvroot -r "$ROOTFS" -w / /bin/chdir_getcwd /bin
     [ "$status" -eq 0 ]
     [ "$output" = "/bin" ]
 }

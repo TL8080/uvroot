@@ -1,6 +1,6 @@
 /* -*- c-set-style: "K&R"; c-basic-offset: 8 -*-
  *
- * This file is part of PRoot.
+ * This file is part of uvroot.
  *
  * Copyright (C) 2015 STMicroelectronics
  *
@@ -115,7 +115,7 @@ int iterate_program_headers(const Tracee *tracee, int fd,
 
     /*
      * Some sanity checks regarding the current
-     * support of the ELF specification in PRoot.
+     * support of the ELF specification in uvroot.
      */
 
     if (elf_phnum >= 0xffff) {
@@ -160,7 +160,7 @@ bool is_host_elf(const Tracee *tracee, const char *host_path)
     int i;
 
     if (force_foreign < 0)
-	force_foreign = (getenv("PROOT_FORCE_FOREIGN_BINARY") != NULL);
+	force_foreign = (getenv("UVROOT_FORCE_FOREIGN_BINARY") != NULL);
 
     if (force_foreign > 0 || !tracee->qemu)
 	return false;

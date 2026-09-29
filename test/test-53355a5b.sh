@@ -6,7 +6,7 @@ TMP=/tmp/$(mcookie)
 
 mkdir ${TMP}
 chmod a-x ${TMP}
-! ${PROOT} sh -c "cd $TMP"
+! ${UVROOT} sh -c "cd $TMP"
 [ $? -eq 0 ]
 
 chmod a+x ${TMP}

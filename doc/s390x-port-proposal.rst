@@ -61,7 +61,7 @@ Pulled directly from the Linux kernel and glibc source, not assumed:
 .. _arch/s390/include/uapi/asm/ptrace.h: https://github.com/torvalds/linux/blob/master/arch/s390/include/uapi/asm/ptrace.h
 
 One open question needs real hardware/QEMU to resolve: whether
-``SYSARG_1`` should map to ``gprs[2]`` (relying on proot's own
+``SYSARG_1`` should map to ``gprs[2]`` (relying on uvroot's own
 ORIGINAL/CURRENT register-version cache, the way ``ARCH_ARM64`` reuses
 ``regs[0]`` for both argument 1 and the result) or to the kernel's own
 ``orig_gpr2`` shadow field. Both are plausible from the header alone;
@@ -70,12 +70,12 @@ this needs to be settled by testing, not guessed at.
 The big risk: first big-endian target
 ----------------------------------------
 
-Every architecture PRoot currently supports is little-endian
+Every architecture uvroot currently supports is little-endian
 (x86, x86_64, arm, arm64, sh4). The absence of ``__AUDIT_ARCH_LE`` in
 s390x's audit-arch constant is the first concrete signal that this
 port is different in kind, not just another ``reg_offset[]`` table.
 
-Anywhere PRoot reads or writes tracee memory as anything other than
+Anywhere uvroot reads or writes tracee memory as anything other than
 opaque bytes needs auditing for a host/guest byte-order assumption
 before this port can be trusted: register values, struct layouts read
 via ``read_data``/``write_data``, path/buffer length fields. This
@@ -86,7 +86,7 @@ needs its own investigation pass; it is not scoped out further here.
 
 s390x can run 31-bit s390 binaries in compat mode, the same relationship
 x86_64 has with i386/x32 (three sysnum tables) and arm64 could have
-with 32-bit ARM EABI (which PRoot doesn't support: ``ARCH_ARM64``
+with 32-bit ARM EABI (which uvroot doesn't support: ``ARCH_ARM64``
 ships with exactly one sysnum table). Following the arm64 precedent,
 propose 64-bit-only for the initial port and revisit 31-bit compat as
 a separate follow-up if there's real demand.
@@ -96,12 +96,12 @@ Testing and CI
 
 No GitHub-hosted runner offers native s390x. The existing aarch64
 smoke test (``.github/workflows/pull-request.yml``) cross-compiles and
-then runs ``qemu-aarch64 -L <sysroot> src/proot --version`` as a basic
+then runs ``qemu-aarch64 -L <sysroot> src/uvroot --version`` as a basic
 liveness check; the same shape would work for a cross-compiled s390x
 build.
 
 That only proves the binary starts, not that ptrace-based tracing
-works. A bigger ask is running proot itself, not just what it traces,
+works. A bigger ask is running uvroot itself, not just what it traces,
 under ``qemu-user``. ptrace-of-a-process-under-emulation
 is a known-fragile combination, not something to assume works without
 hands-on verification on either real s390x hardware or a full-system

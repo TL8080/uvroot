@@ -1,8 +1,8 @@
-How to make a release of PRoot?
+How to make a release of uvroot?
 ===============================
 
 This document summarizes checks that must be performed before
-releasing PRoot or CARE, and the steps to actually publish a release.
+releasing uvroot or CARE, and the steps to actually publish a release.
 
 Checks
 ------
@@ -28,7 +28,7 @@ Checks
   * The following command must not suffer from
     unexpected performance regression::
 
-      time proot -R / perl -e 'system("/usr/bin/true") for (1..10000)'
+      time uvroot -R / perl -e 'system("/usr/bin/true") for (1..10000)'
 
     where :code:`/usr/bin/true` is a symlink to :code:`/bin/true`.
 
@@ -45,10 +45,10 @@ agree before publishing (the ``release`` GitHub Actions workflow
 enforces the first two automatically, see `Publishing the Release`_
 below, but it can't catch a missed changelog entry):
 
-1. :code:`doc/proot/manual.rst`: update the :code:`:Date:` and
+1. :code:`doc/uvroot/manual.rst`: update the :code:`:Date:` and
    :code:`:Version:` fields.
 
-2. :code:`src/cli/proot.h`: update the :code:`#define VERSION "..."`
+2. :code:`src/cli/uvroot.h`: update the :code:`#define VERSION "..."`
    fallback to match. This file is nominally "automatically generated
    from the documentation", but in practice this line is still hand
    edited to match step 1 -- there's no build step that regenerates
@@ -60,7 +60,7 @@ below, but it can't catch a missed changelog entry):
 
 If CARE changed since its last release, its own version needs the
 same treatment in :code:`doc/care/manual.rst` and :code:`src/cli/care.h`;
-CARE and PRoot are versioned independently.
+CARE and uvroot are versioned independently.
 
 Commit these as a single "prepare for release" commit/PR and get it
 merged to :code:`master` before tagging.
@@ -83,16 +83,16 @@ Once the version-bump PR is merged to :code:`master`:
 3. The workflow will:
 
    * fail immediately if the tag doesn't match the version recorded in
-     :code:`doc/proot/manual.rst` or :code:`src/cli/proot.h` -- this is
+     :code:`doc/uvroot/manual.rst` or :code:`src/cli/uvroot.h` -- this is
      the automated check for the version-bump step above;
-   * build static :code:`proot` and :code:`care` binaries, equivalent to::
+   * build static :code:`uvroot` and :code:`care` binaries, equivalent to::
 
        make -C src clean loader.elf loader-m32.elf build.h
-       LDFLAGS="${LDFLAGS} -static" make -C src proot care
+       LDFLAGS="${LDFLAGS} -static" make -C src uvroot care
 
-   * verify the built :code:`proot --version` output actually reports
+   * verify the built :code:`uvroot --version` output actually reports
      the tagged version;
-   * attach :code:`proot`, :code:`care`, and a :code:`SHA256SUMS` file
+   * attach :code:`uvroot`, :code:`care`, and a :code:`SHA256SUMS` file
      to the GitHub release as downloadable assets.
 
 4. Check the workflow run and confirm the assets show up on the

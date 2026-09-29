@@ -1,5 +1,5 @@
 #!/bin/sh
-# Test for Python Extension for PRoot
+# Test for Python Extension for uvroot
 set -eu
 
 # Check for test dependencies
@@ -9,13 +9,13 @@ for cmd in mcookie cat grep rm find; do
   fi
 done
 
-# Check for PRoot binary
-if [ ! -e "${PROOT}" ]; then
+# Check for uvroot binary
+if [ ! -e "${UVROOT}" ]; then
     exit 125
 fi
 
 # Check for python flag
-if ! "${PROOT}" --help | grep -- -p | grep string; then
+if ! "${UVROOT}" --help | grep -- -p | grep string; then
     exit 125
 fi
 
@@ -25,7 +25,7 @@ TMP="$(mcookie)_hide.py"
 cat > "/tmp/${TMP}" <<EOF
 import struct
 
-from proot import *
+from uvroot import *
 
 class Dents(object):
 	"""docstring for Dents"""
@@ -111,7 +111,7 @@ def python_callback(extension, event, data1, data2):
 EOF
 
 # If script passes result from find will be empty
-if [ "$(env PROOT_NO_SECCOMP=1 "${PROOT}" -p "/tmp/${TMP}" find . -maxdepth 1 -type f)" ]; then
+if [ "$(env UVROOT_NO_SECCOMP=1 "${UVROOT}" -p "/tmp/${TMP}" find . -maxdepth 1 -type f)" ]; then
     exit 1
 fi
 
