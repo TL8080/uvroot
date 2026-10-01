@@ -339,6 +339,142 @@ blocks (a reflink or a snapshot) are all detected.
     copy-on-write writes with refcount maintenance; ``--qcow`` and
     ``--qemu+img`` are aliases.
 
+Virtual network options
+-----------------------
+
+The following options give the container its own user-mode network,
+bridged over WireGuard.  Nothing is created at the kernel level, so
+they work where uvroot works (unrooted Android/Termux included) and
+need neither privilege, kernel module nor ``/dev/net/tun``.
+
+Two devices are mapped by ``--net``: ``veth0`` for ordinary network I/O
+and ``vtun`` for tailscale and other intranet-penetration traffic, plus
+the loopback.  ``ip link``, ``ip addr`` and ``ip route`` operate on them,
+``getifaddrs(3)`` reports them and the legacy ``SIOCGIF*`` ioctls answer
+from them; the host interfaces are never visible, and the container never
+changes them.  The mapping is answered by uvroot itself (rtnetlink and
+ioctl synthesis), so a container can bring a device up or down, add and
+remove addresses, routes and even new virtual interfaces (``ip link add``)
+without any privilege.
+
+The devices are attached to a WireGuard bridge in user space.  uvroot
+contains a **built-in user-space WireGuard implementation**: it runs the
+Noise IK handshake and the transport data path itself, taking X25519 and
+ChaCha20-Poly1305 from libcrypto (resolved with ``dlopen()``, never
+linked) and implementing BLAKE2s, HMAC-BLAKE2s and the WireGuard KDF
+in-tree.  It interoperates with the kernel WireGuard driver: a peer on
+the host (or anywhere reachable over UDP) can ping the container through
+the tunnel, and the container can ping the peer.
+
+The container can also create its own tunnel device.  ``/dev/net/tun``
+is virtualised: opening it never touches the host device (which would
+require ``CAP_NET_ADMIN`` and would escape the virtual network), the
+``TUNSETIFF``/``TUNGETIFF``/``TUNGETFEATURES`` ioctls are answered from
+the virtual model, and the returned descriptor is backed by a socketpair
+whose other end feeds the WireGuard engine.  A program inside the
+container can therefore open ``/dev/net/tun``, name it (``vtun`` by
+default), configure it and exchange IP packets, which are encrypted to
+the configured peer.
+
+The virtual network covers the native ABI only.  A 32-bit program or
+library would silently fall back to the host stack, so uvroot refuses it
+instead: as soon as a 32-bit tracee is detected with ``--net``, it
+reports an error and stops the container.
+
+An external user-space WireGuard implementation may be used instead: a
+shared library exporting ``uvroot_wg_ops`` named by
+``UVROOT_NETVIRT_WG_LIB`` (tried first) or a program such as
+``wireguard-go`` or ``boringtun`` named by ``UVROOT_NETVIRT_WG_EXEC``,
+both driven through their UAPI socket with a socketpair standing in for
+the TUN device.  When a device has no peer, or the engine cannot start,
+traffic falls back to a user-mode NAT through the host stack.
+
+.. _WireGuard: https://www.wireguard.com/
+
+--net
+    Enable the WireGuard-bridged virtual network.
+
+    Installs the two mapped devices described above.  It can be combined
+    with the tuning options below; every one of them also enables the
+    feature, so ``--net`` itself is optional when another one is used.
+
+--net-if=string
+    Declare or tune a virtual interface, e.g. *name,addr=...*.
+
+    The argument is a comma-separated list whose first item is the
+    interface name, followed by options: *addr=CIDR* assigns an
+    IPv4/IPv6 address, *mtu=N* sets the MTU, *mac=ADDR* the MAC address,
+    *kind=NAME* the link kind (``veth``, ``tun``, ``dummy``,
+    ``wireguard``, ...), *wg=CONFIG* attaches a WireGuard configuration
+    (see ``--wg``) and *up* / *down* changes the administrative state.
+    ``--net`` already creates ``veth0`` and ``vtun``; this option
+    overrides them or adds more devices, for instance
+    ``--net-if=wlan0,addr=192.168.1.2/24,up``.
+
+--net-route=string
+    Add a route to the virtual routing table.
+
+    The syntax is *destination[/prefix]* followed by optional
+    ``via GATEWAY``, ``dev INTERFACE``, ``metric N`` and ``table N``
+    clauses.  The word ``default`` may be used for the default route::
+
+        --net-route='10.8.0.0/24 dev vtun'
+        --net-route='default via 10.177.0.1 dev veth0'
+
+--wg=string
+    Attach a WireGuard configuration to an interface.
+
+    The syntax is *interface*:*configuration*.  The configuration is
+    either a wg(8)/wg-quick file body (``[Interface]``/``[Peer]``
+    sections with PrivateKey, Address, PublicKey, Endpoint, AllowedIPs,
+    PersistentKeepalive, ...), a ``conf=/path/to/wg0.conf`` reference,
+    or a flat ``private_key=...;peer=...;allowed_ip=...`` string.  It is
+    handed to the user-space implementation selected by ``--net-bridge``.
+    ``UVROOT_NETVIRT_WG_CONF`` provides a default configuration.
+
+    The built-in engine also accepts ``forward_udp=LOCALIP:PORT=HOST:PORT``
+    for datagram services (a DNS resolver on port 53, say) and
+    ``forward=LOCALIP:PORT=HOST:PORT``
+    one or more times.  A TCP connection arriving through the tunnel for
+    *LOCALIP:PORT* is terminated by uvroot and its byte stream is relayed
+    to *HOST:PORT* on the host, so a service listening there (an sshd on
+    127.0.0.1, say) is reachable from the peer through the tunnel.  This
+    is what makes a service inside the container reachable, since the
+    container's own TCP endpoints live in the host network namespace and
+    the tunnel carries only IP packets.  A real ``ssh`` client on the far
+    side can then log into the container over the tunnel; OpenSSH's own
+    ``sshd`` cannot be used as that service under an emulated root (its
+    privilege separation child chroots and authenticates through PAM), so
+    a server without privilege separation is needed.
+
+--net-bridge=string
+    Select the WireGuard bridge implementation.
+
+    The argument is a comma-separated list.  The first item sets the
+    implementation: ``userspace`` (the default; uvroot's built-in engine,
+    or an external one when ``lib=``/``exec=`` is given), ``kernel`` (the
+    in-kernel driver, which needs ``CAP_NET_ADMIN``), ``nat`` (the
+    user-mode NAT fallback only) or ``none`` (no bridge at all).  The
+    optional ``lib=/path`` item names a shared library exporting
+    ``uvroot_wg_ops``, and ``exec=/path`` an external program such as
+    ``wireguard-go`` or ``boringtun``.  ``UVROOT_NETVIRT_WG_LIB`` and
+    ``UVROOT_NETVIRT_WG_EXEC`` are the environment equivalents.
+
+--vpid=string
+    Give the container its own virtual process ids.
+
+    *N* is the virtual pid of the first program of the container; its
+    children get the following ones.  ``/proc`` is then presented from
+    the virtual point of view: ``/proc/<vpid>`` maps to the real process,
+    ``/proc/<pid>/status`` and ``/proc/<pid>/stat`` report the virtual
+    pid (and the virtual parent and group/session), the ``/proc``
+    listings only show the container's own processes, and a host pid is
+    not reachable at all.  ``getpid``, ``gettid``, ``getppid``,
+    ``getpgrp``, ``getpgid``, ``getsid``, ``fork``/``clone``, ``wait``
+    and ``kill`` all speak the virtual pid space, so a shell sees a
+    coherent process tree.  For example
+    ``uvroot --vpid=1 -r / /bin/sh`` makes the shell believe it is pid 1.
+
 Virtual permission options
 --------------------------
 
@@ -360,6 +496,14 @@ shims nor by calling the internal switch path directly.  Without the
 virtual ``su``/``sudo`` (``--vperm-nosu``) an unprivileged id cannot
 switch at all.  ``capset``, ``ptrace`` and ``process_vm_readv``/
 ``process_vm_writev`` are intercepted as well.
+
+A virtual root may also create privileged ports.  The host kernel
+refuses ``bind()`` to ports below 1024 without ``CAP_NET_BIND_SERVICE``,
+so for a virtual root such a port is moved to a high one for the real
+call (80 becomes 20080) and moved back when the guest asks with
+``getsockname()`` or connects to it on the loopback: the guest believes
+it owns port 80 or 22, and a client inside the container reaches it.
+A plain (non-root) id keeps the host behaviour and gets ``EACCES``.
 
 Process control follows the same identities: an id other than the virtual
 root may only signal processes of its own identity.  ``kill``, ``tkill``,

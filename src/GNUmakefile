@@ -101,6 +101,16 @@ ifneq ($(HAS_ZLIB),)
   CFLAGS += -DHAVE_ZLIB $(shell ${PKG_CONFIG} --cflags zlib)
 endif
 
+# The built-in user-space WireGuard engine takes X25519 and
+# ChaCha20-Poly1305 from libcrypto, resolved with dlopen() at run time
+# (never linked).  Only its headers are needed here, so a build without
+# them still succeeds: --net --wg then reports the engine as unavailable
+# and falls back to the user-mode NAT path.
+HAS_LIBCRYPTO := $(shell ${PKG_CONFIG} --exists libcrypto && echo yes)
+ifneq ($(HAS_LIBCRYPTO),)
+  CFLAGS += -DHAVE_LIBCRYPTO $(shell ${PKG_CONFIG} --cflags libcrypto)
+endif
+
 # dlopen()/dlsym() live in libc on recent glibc and on Android bionic,
 # and in libdl elsewhere.  Probe before adding -ldl so musl builds and
 # the like do not break.
@@ -153,6 +163,7 @@ OBJECTS += \
 	ptrace/wait.o		\
 	extension/extension.o	\
 	extension/kompat/kompat.o \
+	extension/bindv/bindv.o \
 	extension/fake_id0/fake_id0.o \
 	extension/link2symlink/link2symlink.o \
 	extension/portmap/portmap.o \
@@ -169,6 +180,16 @@ OBJECTS += \
 	extension/netfs/fs_ext2.o \
 	extension/netfs/backend_reserved.o \
 	extension/vperm/vperm.o \
+	extension/vpid/vpid.o \
+	extension/netvirt/netvirt.o \
+	extension/netvirt/netlink.o \
+	extension/netvirt/ioctl.o \
+	extension/netvirt/bridge.o \
+	extension/netvirt/wg/wg_crypto.o \
+	extension/netvirt/wg/wg_noise.o \
+	extension/netvirt/wg/wg_engine.o \
+	extension/netvirt/wg/wg_tcp.o \
+	extension/netvirt/wg/wg_udp.o \
 	loader/loader-wrapped.o
 
 define define_from_arch.h

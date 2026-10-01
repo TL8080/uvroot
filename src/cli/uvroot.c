@@ -28,8 +28,11 @@
 #include "cli/cli.h"
 #include "cli/note.h"
 #include "extension/extension.h"
+#include "extension/bindv/bindv.h"
 #include "extension/netfs/netfs.h"
+#include "extension/netvirt/netvirt.h"
 #include "extension/vperm/vperm.h"
+#include "extension/vpid/vpid.h"
 #include "path/binding.h"
 #include "attribute.h"
 
@@ -207,6 +210,8 @@ static int handle_option_i(Tracee *tracee, const Cli *cli UNUSED,
     }
 
     (void) initialize_extension(tracee, fake_id0_callback, value);
+    /* The virtual root may then create privileged ports.  */
+    (void) initialize_extension(tracee, bindv_callback, value);
     return 0;
 }
 
@@ -423,6 +428,51 @@ static int handle_option_qcow2(Tracee *tracee, const Cli *cli UNUSED,
 }
 
 /*
+ * Virtual network.  --net installs the two mapped devices (veth0 for
+ * ordinary I/O, vtun for tailscale/intranet traffic) bridged over
+ * WireGuard; --net-if/--net-route/--wg/--net-bridge tune them.
+ */
+static int handle_option_net(Tracee *tracee, const Cli *cli UNUSED,
+			     const char *value UNUSED)
+{
+    return netvirt_enable(tracee);
+}
+
+/*
+ * Virtual process ids: --vpid=N gives the first program of the
+ * container the virtual pid N and isolates /proc from the host.
+ */
+static int handle_option_vpid(Tracee *tracee, const Cli *cli UNUSED,
+			      const char *value)
+{
+    return vpid_set(tracee, value);
+}
+
+static int handle_option_net_if(Tracee *tracee, const Cli *cli UNUSED,
+				const char *value)
+{
+    return netvirt_add_if(tracee, value);
+}
+
+static int handle_option_net_route(Tracee *tracee, const Cli *cli UNUSED,
+				   const char *value)
+{
+    return netvirt_add_route(tracee, value);
+}
+
+static int handle_option_wg(Tracee *tracee, const Cli *cli UNUSED,
+			    const char *value)
+{
+    return netvirt_set_wg(tracee, value);
+}
+
+static int handle_option_net_bridge(Tracee *tracee, const Cli *cli UNUSED,
+				    const char *value)
+{
+    return netvirt_set_bridge(tracee, value);
+}
+
+/*
  * Every netfs mount of this container becomes read-only, for every
  * virtual identity -- id0 included.
  */
@@ -563,6 +613,12 @@ static int pre_initialize_bindings(Tracee *tracee, const Cli *cli,
     /* All the options are known now: settle which process owns each
      * shared image (an id0 process always does).  */
     netfs_finalize(tracee);
+
+    /* All the network options are known now: start the WireGuard
+     * bridges and settle the virtual device model.  */
+    status = netvirt_finalize(tracee);
+    if (status < 0)
+	return -1;
 
     /*
      * uvroot shares the host's network stack but not its /etc: a block

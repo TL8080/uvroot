@@ -37,6 +37,11 @@ What this fork adds
 - read-only enforcement (``--read-only`` / ``--ro=<path>``)
 - user-mode network/disk backends: FTP/FTPS/SFTP, SMB, NFS, iSCSI, NBD,
   ext2/3/4 images and qcow2 (``--netfs=`` and friends)
+- a user-mode virtual network bridged over WireGuard (``--net``): the
+  container gets ``veth0`` (ordinary I/O) and ``vtun``
+  (tailscale/intranet), ``ip link``/``ip addr``/``ip route`` work on them
+  without any privilege, and a built-in user-space WireGuard engine
+  (interoperable with the kernel driver) carries the traffic
 - ``/proc`` and ``df`` storage-information virtualisation for virtual roots
 
 A detailed, flag-by-flag comparison with upstream PRoot — plus usage recipes —
@@ -64,6 +69,7 @@ Bind mounts, network/image backends, virtual permissions and read-only roots::
     uvroot -r / --smb=/mnt/s:'smb://user:pass@host/share' -i 0:0 /bin/sh
     uvroot -r ~/alpine --vperm --vperm-id=0:0 /bin/sh
     uvroot -r ~/ubuntu -i 0:0 --read-only --ro=/tmp /bin/bash
+    uvroot -r ~/alpine --net -i 0:0 /bin/sh   # veth0 + vtun over WireGuard
 
 A disk image or an iSCSI/NBD device used as the guest root
 (``--img=/:...``, ``--iscsi=/:...``) contains none of the host's
@@ -128,6 +134,16 @@ At build time the Makefile probes ``pkg-config`` for ``libcurl``,
 ``zlib``; a driver is only compiled when those headers are present,
 otherwise it becomes a stub that reports the feature as unavailable.
 
+The WireGuard bridge of ``--net`` follows the same rule.  uvroot ships a
+built-in user-space WireGuard engine: it takes X25519 and
+ChaCha20-Poly1305 from libcrypto, resolved with ``dlopen()``, and
+interoperates with the kernel WireGuard driver, so `ip link`/`ip addr`
+and a virtual ``/dev/net/tun`` inside the container carry real tunnel
+traffic.  An external implementation (``UVROOT_NETVIRT_WG_LIB``, or a
+``wireguard-go``/``boringtun`` named by ``UVROOT_NETVIRT_WG_EXEC``) is
+used when provided, and a user-mode NAT is the last resort, so uvroot
+never links against, nor requires, WireGuard itself.
+
 On Termux the libraries come from ``libcurl``, ``samba`` (which provides
 ``libsmbclient``), ``libnfs``, ``e2fsprogs`` (which provides
 ``libext2fs``) and ``zlib``; ``libnbd`` and ``libiscsi`` are not packaged
@@ -156,6 +172,10 @@ Other knobs, all prefixed with ``UVROOT_``:
 - ``UVROOT_IGNORE_MISSING_BINDINGS`` — do not fail on missing ``-b`` sources
 - ``UVROOT_FORCE_KOMPAT``, ``UVROOT_FORCE_FOREIGN_BINARY``
 - ``UVROOT_NETFS_*`` — backend selection and tuning
+- ``UVROOT_NETVIRT_WG_LIB``, ``UVROOT_NETVIRT_WG_EXEC``,
+  ``UVROOT_NETVIRT_WG_CONF`` — user-space WireGuard implementation used by
+  ``--net`` (a shared library exporting ``uvroot_wg_ops`` is preferred,
+  then an external ``wireguard-go``/``boringtun``)
 
 Support
 =======

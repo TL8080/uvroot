@@ -100,6 +100,18 @@ static int handle_option_img(Tracee * tracee, const Cli * cli,
 			     const char *value);
 static int handle_option_qcow2(Tracee * tracee, const Cli * cli,
 			       const char *value);
+static int handle_option_net(Tracee * tracee, const Cli * cli,
+			     const char *value);
+static int handle_option_net_if(Tracee * tracee, const Cli * cli,
+				const char *value);
+static int handle_option_net_route(Tracee * tracee, const Cli * cli,
+				   const char *value);
+static int handle_option_wg(Tracee * tracee, const Cli * cli,
+			    const char *value);
+static int handle_option_net_bridge(Tracee * tracee, const Cli * cli,
+				    const char *value);
+static int handle_option_vpid(Tracee * tracee, const Cli * cli,
+			      const char *value);
 static int handle_option_vperm(Tracee * tracee, const Cli * cli,
 			       const char *value);
 static int handle_option_vperm_file(Tracee * tracee, const Cli * cli,
@@ -637,6 +649,127 @@ Based on PRoot, Copyright (C) 2015 STMicroelectronics.",
 \tlocal rootfs it is stored as *root*/.uvroot-vperm; for a netfs root,\n\
 \twhose cache is temporary, it is kept outside of it (see\n\
 \t--vperm-file).",
+		 },
+		{.class = "Virtual network options",
+		 .arguments = {
+			       {.name = "--net-bridge",.separator =
+				'=',.value = "string"},
+			       {.name = NULL,.separator = '\0',.value =
+				NULL}},
+		 .handler = handle_option_net_bridge,
+		 .description =
+		 "Select the WireGuard bridge implementation.",
+		 .detail =
+		 "\tThe argument is a comma-separated list.  The first item sets\n\
+\tthe implementation:\n\
+\t\n\
+\t    *userspace*   a user-space WireGuard implementation (default)\n\
+\t    *kernel*      the in-kernel WireGuard driver (needs CAP_NET_ADMIN)\n\
+\t    *nat*         the user-mode NAT fallback only\n\
+\t    *none*        no bridge at all\n\
+\t\n\
+\tThe optional ``lib=/path`` item names a shared library exporting\n\
+\t``uvroot_wg_ops`` (preferred, see the manual), and ``exec=/path`` an\n\
+\texternal user-space implementation (wireguard-go, boringtun, ...).\n\
+\tUVROOT_NETVIRT_WG_LIB and UVROOT_NETVIRT_WG_EXEC are the environment\n\
+\tequivalents.\n",
+		 },
+		{.class = "Virtual network options",
+		 .arguments = {
+			       {.name = "--net-route",.separator = '=',.value =
+				"string"},
+			       {.name = NULL,.separator = '\0',.value =
+				NULL}},
+		 .handler = handle_option_net_route,
+		 .description =
+		 "Add a route to the virtual routing table.",
+		 .detail =
+		 "\tThe syntax is *destination[/prefix]* followed by optional\n\
+\t``via GATEWAY``, ``dev INTERFACE``, ``metric N`` and ``table N``\n\
+\tclauses, for instance:\n\
+\t\n\
+\t    --net-route='10.8.0.0/24 dev vtun'\n\
+\t    --net-route='default via 10.177.0.1 dev veth0'\n",
+		 },
+		{.class = "Virtual network options",
+		 .arguments = {
+			       {.name = "--net-if",.separator = '=',.value =
+				"string"},
+			       {.name = NULL,.separator = '\0',.value =
+				NULL}},
+		 .handler = handle_option_net_if,
+		 .description =
+		 "Declare or tune a virtual interface, e.g. *name,addr=...*.",
+		 .detail =
+		 "\tThe argument is a comma-separated list whose first item is\n\
+\tthe interface name, followed by options:\n\
+\t\n\
+\t    *addr=CIDR*   assign an IPv4/IPv6 address\n\
+\t    *mtu=N*       set the MTU\n\
+\t    *mac=ADDR*    set the MAC address\n\
+\t    *kind=NAME*   link kind (veth, tun, dummy, wireguard, ...)\n\
+\t    *wg=CONFIG*   attach a WireGuard configuration\n\
+\t    *up* / *down* bring the interface up or down\n\
+\t\n\
+\t--net already creates veth0 and vtun; this option overrides them or\n\
+\tadds more devices.  Example: --net-if=wlan0,addr=192.168.1.2/24,up\n",
+		 },
+		{.class = "Virtual network options",
+		 .arguments = {
+			       {.name = "--net",.separator = '\0',.value =
+				NULL},
+			       {.name = NULL,.separator = '\0',.value =
+				NULL}},
+		 .handler = handle_option_net,
+		 .description =
+		 "Enable the WireGuard-bridged virtual network.",
+		 .detail =
+		 "\tInstall a user-mode virtual network in the container: two\n\
+\tmapped devices, *veth0* for ordinary network I/O and *vtun* for\n\
+\ttailscale/intranet traffic, plus the loopback.  Nothing is created at\n\
+\tthe kernel level, so no privilege, kernel module or /dev/net/tun is\n\
+\tneeded; the container's `ip link`, `ip addr` and `ip route` operate on\n\
+\tthe virtual devices, and getifaddrs(3) reports them.\n\
+\t\n\
+\tThe devices are bridged over WireGuard in user space: when a user-space\n\
+\timplementation is available (see --net-bridge) it is driven through its\n\
+\tUAPI socket, with a socketpair standing in for the TUN device; without\n\
+\tone, traffic falls back to a user-mode NAT through the host stack.\n",
+		 },
+		{.class = "Virtual network options",
+		 .arguments = {
+			       {.name = "--wg",.separator = '=',.value =
+				"string"},
+			       {.name = NULL,.separator = '\0',.value =
+				NULL}},
+		 .handler = handle_option_wg,
+		 .description =
+		 "Attach a WireGuard configuration to an interface.",
+		 .detail =
+		 "\tThe syntax is *interface*:*configuration*.  The configuration\n\
+\tis either a wg(8)/wg-quick file body (``[Interface]``/``[Peer]``\n\
+\tsections with PrivateKey, Address, PublicKey, Endpoint, AllowedIPs,\n\
+\tPersistentKeepalive, ...), a ``conf=/path/to/wg0.conf`` reference, or\n\
+\ta flat ``private_key=...;peer=...;allowed_ip=...`` string.  It is\n\
+\thanded to the user-space WireGuard implementation selected by\n\
+\t--net-bridge; UVROOT_NETVIRT_WG_CONF provides a default.\n",
+		 },
+		{.class = "Virtual process id options",
+		 .arguments = {
+			       {.name = "--vpid",.separator = '=',.value =
+				"string"},
+			       {.name = NULL,.separator = '\0',.value =
+				NULL}},
+		 .handler = handle_option_vpid,
+		 .description =
+		 "Set the container's virtual process ids.",
+		 .detail =
+		 "\tGive the first program of the container the virtual process\n\
+\tid *N*; its children get the following ones.  /proc is presented from\n\
+\tthe virtual point of view: /proc/<vpid> maps to the real process,\n\
+\t/proc/<pid>/status and /proc/<pid>/stat report the virtual pid and\n\
+\tparent, the /proc listings only show the container's own processes,\n\
+\tand a host pid is not accessible at all.\n",
 		 },
 		{.class = "Alias options",
 		 .arguments = {

@@ -681,7 +681,6 @@ static int handle_sysexit_end(Tracee *tracee, Config *config)
 
     case PR_chroot:{
 	    char path[PATH_MAX];
-	    char abspath[PATH_MAX];
 	    word_t input;
 	    int status;
 
@@ -699,16 +698,10 @@ static int handle_sysexit_end(Tracee *tracee, Config *config)
 	    if (status < 0)
 		return status;
 
-	    /* Resolve relative path segments. */
-	    if (!realpath(path, abspath))
-		return 0;
-
-	    /* Only "new rootfs == current rootfs" is supported yet.  */
-	    status = compare_paths(get_root(tracee), abspath);
-	    if (status != PATHS_ARE_EQUAL)
-		return 0;
-
-	    /* Force success.  */
+	    /* Tell a virtual root that the chroot() succeeded.  It is a
+	     * no-op: the real confinement is uvroot's root, not this
+	     * virtual chroot, and some daemons (the sshd privilege
+	     * separation child) cannot start without it.  */
 	    poke_reg(tracee, SYSARG_RESULT, 0);
 	    return 0;
 	}
