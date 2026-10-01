@@ -83,8 +83,9 @@ The following commands can be used to compile uvroot and CARE::
     make -C src uvroot care # then compile uvroot and CARE
     make -C test # run test suite
 
-Cross-compiling for Android/arm64 with the Android NDK is covered in
-``test/android-a5/README.md`` (a ready-made script lives next to it).
+Cross-compiling works the same way: point ``CC`` at a cross compiler and run
+the same ``make`` commands.  The only target-specific knob is the compiled-in
+temporary directory (see `Environment`_).
 
 Dependencies
 ============
@@ -142,9 +143,9 @@ Environment
 ===========
 
 Without ``/tmp`` (Android/Termux) the temporary directory is selected from
-``UVROOT_TMP_DIR``, then ``TMPDIR``, then a path baked in at build time —
-``test/android-a5/build-android-ndk.sh`` compiles in ``$PREFIX/tmp`` — and
-finally ``/tmp``.  Export it explicitly when none of those fits::
+``UVROOT_TMP_DIR``, then ``TMPDIR``, then a path baked in at build time
+(``CPPFLAGS=-DUVROOT_TMP_DIR_DEFAULT=\"<dir>\"``), and finally ``/tmp``.
+Export it explicitly when none of those fits::
 
     export UVROOT_TMP_DIR=/data/data/com.termux/files/usr/tmp
 

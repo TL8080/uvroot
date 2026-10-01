@@ -11,12 +11,12 @@
 #include "cli/note.h"
 
 /*
- * Directory used when neither UVROOT_TMP_DIR nor TMPDIR is set.  A
- * build can override it at compile time: test/android-a5/build-android-ndk.sh
- * bakes in "<prefix>/tmp" (e.g. /data/data/com.termux/files/usr/tmp),
- * because Android/Termux has no "/tmp" at all and requiring
- * UVROOT_TMP_DIR to be exported by hand would make the resulting binary
- * unusable out of the box.
+ * Directory used when neither UVROOT_TMP_DIR nor TMPDIR is set.  A build
+ * can override it at compile time with
+ * CPPFLAGS=-DUVROOT_TMP_DIR_DEFAULT=\"<dir>\", which is how a target
+ * without "/tmp" at all (e.g. Android/Termux, where "<prefix>/tmp" is the
+ * natural choice) gets a working default instead of requiring
+ * UVROOT_TMP_DIR to be exported by hand.
  *
  * When the compiled-in default does not exist the historical P_tmpdir
  * fallback is kept, so an unmodified build behaves exactly as before.

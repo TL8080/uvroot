@@ -26,5 +26,3 @@ test/*
 !test/helper.bash
 !test/docker
 !test/unit
-!test/android-a5
-!test/android-a5/**

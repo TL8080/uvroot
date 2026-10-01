@@ -95,11 +95,10 @@ Added
 - Ancestor execute and parent-directory write checks for ``vperm``,
   whole-subtree entry relocation on directory renames, and the metadata
   database is now filtered out of directory listings.
-- ``test/android-a5/build-libiscsi-ndk.sh`` cross-builds libiscsi (the
-  library behind ``--iscsi``) for Android/arm64 with the NDK, and
-  ``build-android-ndk.sh`` grew ``EXTRA_DEPS_DIRS`` so the headers and
-  pkg-config files of such dlopen-only libraries can be merged into its
-  sysroot -- without them the matching backend is compiled as a stub.
+- Cross-compiled builds can merge the headers and pkg-config files of
+  dlopen-only libraries (such as libiscsi, behind ``--iscsi``) into their
+  sysroot through ``EXTRA_DEPS_DIRS`` -- without them the matching backend
+  is compiled as a stub.
 
 Changed
 ~~~~~~~
@@ -108,10 +107,9 @@ Changed
   name; only upstream PRoot's ``.proot-vperm`` is migrated to
   ``.uvroot-vperm``.
 - The temporary directory is now selected from ``UVROOT_TMP_DIR``, then
-  ``TMPDIR``, then a path baked in at build time, and finally ``/tmp``.
-  ``test/android-a5/build-android-ndk.sh`` bakes in ``$PREFIX/tmp`` and
-  passes the git version to ``build.h``, so the cross-built binary works
-  on Android/Termux without ``UVROOT_TMP_DIR`` and still reports
+  ``TMPDIR``, then a path baked in at build time
+  (``UVROOT_TMP_DIR_DEFAULT``), and finally ``/tmp``, so a cross-built
+  binary works on a target without ``/tmp`` and still reports
   ``uvroot --version``.
 
 5.4.1 - 2026-09-07

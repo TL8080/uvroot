@@ -24,12 +24,11 @@
    - 运行时数据 `.proot-vperm` → `.uvroot-vperm`（上游旧名 `.proot-vperm`
      会被自动接管）
 2. **文档**：`README.rst` 重写（上游署名/链接保留）、本文件、
-   [`CHANGES-vs-PRoot.md`](CHANGES-vs-PRoot.md)、Android/NDK 实测报告
-   `test/android-a5/README.md`
+   [`CHANGES-vs-PRoot.md`](CHANGES-vs-PRoot.md)
 3. **缺陷修复**：`faccessat2`(439) 在 arm64/arm/i386/sh4 的 syscall 表缺失
    （上游 bug，会导致 ARM 上 glibc 容器里 `apt` 完全不可用）
-4. **构建与测试脚本**：`test/android-a5/`（NDK 交叉编译、设备端 musl/glibc
-   兼容性矩阵、zig 与 termux-glibc 工具链用例）
+4. **构建与测试脚本**：`test/` 下的 libcheck 单元测试、Bats 套件与 shellcheck
+   job，以及编译期开关 `UVROOT_TMP_DIR_DEFAULT`
 5. **隐私清理**：移除仓库内的私网 IP / 设备序列号 / 主机绝对路径
 
 ## 人类作者需要确认的

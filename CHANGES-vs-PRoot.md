@@ -81,8 +81,7 @@ uvroot --multi <容器1 参数> -- <容器2 参数> -- ...
 
 > 已知未闭环：`tar` **不带 `-C`** 的相对路径解包在 NDK 构建产物上失败
 > （`mkdir("./a/b")` 返回 ENOENT），导致 `dpkg`/`apt-get install` 装包失败。
-> 详见 [`test/android-a5/README.md`](test/android-a5/README.md) §4.2。上游 PRoot
-> 用同一套 NDK 工具链编译也复现，Termux 官方 proot 包不复现。
+> 上游 PRoot 用同一套 NDK 工具链编译也复现，Termux 官方 proot 包不复现。
 
 ---
 
@@ -114,12 +113,12 @@ make -C test            # 测试套件
 export UVROOT_TMP_DIR=/data/data/com.termux/files/usr/tmp
 ```
 
-**Android/arm64 用 NDK 交叉编译**（一键脚本）：
+**交叉编译**（把 ``CC`` 换成目标工具链即可）：
 
 ```sh
-NDK=~/Android/Sdk/ndk/27.2.12479018 \
-  bash test/android-a5/build-android-ndk.sh 24 ./out
-# -> ./out/uvroot  (aarch64 Android PIE, 仅依赖 libdl/libc)
+make -C src uvroot CC=aarch64-linux-android24-clang \
+  CPPFLAGS='-DUVROOT_TMP_DIR_DEFAULT="/data/data/com.termux/files/usr/tmp"'
+# -> src/uvroot  (aarch64 Android PIE, 仅依赖 libdl/libc)
 ```
 
 ---
@@ -194,7 +193,6 @@ printf 'nameserver 223.5.5.5\nnameserver 119.29.29.29\n' > ~/alpine/etc/resolv.c
 export UVROOT_TMP_DIR=$PREFIX/tmp          # Android 没有 /tmp
 
 # 从 adb 以 Termux 用户运行时要带 AID_INET(3003)，否则 netd 不给解析域名
-# （test/android-a5/tools/a5run.c 是为此写的小工具）
 
 # 当 proot-distro 的 drop-in：它按名字找 proot
 mkdir -p ~/bin-ours && ln -sf ~/uvroot ~/bin-ours/proot
@@ -241,4 +239,3 @@ PATH=~/bin-ours:$PATH proot-distro login alpine
 
 - 上游：https://github.com/proot-me/proot （GPL-2.0-or-later）
 - 本 fork 的 AI 参与声明：[`AI-ATTRIBUTION.md`](AI-ATTRIBUTION.md)
-- Android/arm64 实测报告：[`test/android-a5/README.md`](test/android-a5/README.md)
