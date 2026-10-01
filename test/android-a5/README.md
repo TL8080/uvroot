@@ -262,6 +262,55 @@ host  stat: 644 10117:10117        <- 宿主元数据一个字节都没动
 > 5. `test-image-guard.sh` 的 `--ro` 部分用 ext4 镜像 + `debugfs`，板子上没有 loop/ext4
 >    工具链，改用**普通目录 + `-b` 绑定**，并从宿主侧核对文件是否真的没被创建。
 
+### 3.3 在 uvroot 隔离根里跑**安卓应用**（Termux，非 root）
+
+把隔离对象从“Linux 容器”换成“一个真实的 Android 应用”：根是空目录，只绑
+`/system /apex /vendor /linkerconfig`、应用的 `base.apk`、一份**自己造的影子数据**、
+探针目录和 `/dev /proc /sys`。于是 guest 内 `ls /` 只有 8 项，`/data/data` 里只有
+目标应用，`/sdcard`、`/etc`、其他应用数据全部不存在。
+
+| 脚本 | 身份 | 结果 |
+|---|---|---|
+| `cases/65-app-isolation.sh` | Termux（uid 10117） | **35/35** |
+| `cases/66-mt-isolation.sh`（MT 管理器 A/B 回测） | Termux（uid 10117） | **39/39** |
+| `app-isolation/no-su-device.sh` | adb shell（uid 2000，**零 `su`**） | **20/20** |
+
+**回测“隔离到底有没有效果”**：拿 **MT 管理器**（`bin.mt.plus` 2.26.7，职业就是翻遍
+`/sdcard` 的文件管理器，5 dex / 34 MB / 11 个原生库含 `libmtprotect.so`）做 A/B：
+同一份探针、同一 uid，**一次不套 uvroot、一次套 uvroot**。用 MT 自己的原生
+`readlink` 测量，结果 `/sdcard` `/mnt/sdcard` `/etc` 分别是
+`/storage/self/primary` `/storage/self/primary` `/system/etc` → **全部 `null`**；
+`exists()` 侧 `/sdcard` `/storage` `/mnt` `/etc` `/data/media` 等由 `true` 变 `false`，
+而 uvroot 凭空造出来的 `/data/app/<pkg>/base.apk` 由 `false` 变 `true`。
+MT 的 dex 与原生库在隔离内照常加载（`getABI=arm64-v8a`、`uid2name(10107)=u0_a107`），
+所以不是“跑不起来所以看不见”。
+要点：`/sdcard` 在隔离内**不是权限不足，而是路径不在命名空间里** —— 即便进程有
+MT 真正的 all-files 权限也一样看不到。
+
+在隔离根里真的跑了应用的代码，而不是“推测能跑”：`app_process64` 加载 APK，
+`calcPanelGrid(4.8×3.6)=48`、`calcRoom.areaM2=17.28`、`calcAll`（totalArea 17.28 /
+panelsOpt 48 / mainMeters 19.2）、`LayoutVerts.build` 产出 112 个顶点，
+`libc++_shared.so` 与应用的 `libceilingvk.so` 都 `dlopen` 成功；写操作只落在影子目录，
+真实数据（`drwx------ u0_a114`）对 uid 10117 在内核层面就不可读。
+`--read-only` 拒写仍可读，`-i 0:0` 假 root 而宿主元数据不变。
+
+**GUI 边界（本轮把上一轮的结论修正了）**：
+
+- uvroot 起的进程**不是应用进程**：`ActivityThread.currentActivityThread=null`、
+  `currentApplication=null`，没有窗口 token；
+- `/system/bin/am` 从 guest 里调用会被
+  `assertPackageMatchesCallingUid` 拒绝（命令实现把 caller 写死成 `com.android.shell`）；
+- 自己 binder 调 `startActivityAsUser(callingPackage="com.termux")` 返回 0，但 AMS
+  随后以 `Background activity start ... allowBackgroundActivityStart: false` 拦下 ——
+  上一轮记的“✅ 应用进前台”只是 caller 恰好处于前台时的偶然结果；
+- 用 shell 身份正常启动应用（界面确实起来了）后，该进程的
+  `/proc/<pid>/mountinfo` 里 **0** 处 uvroot 映射，根是真实根（`/sdcard` `/etc`
+  `/storage` 都在），读到的是真实 `rooms.json`，而 guest 读到的是影子内容：
+  **AMS 在系统命名空间里 fork 应用，隔离只作用于“发起方”**。
+
+完整报告、复现命令、坑与边界见
+[`app-isolation/README.md`](app-isolation/README.md)。
+
 ---
 
 ## 4. 发现的问题
