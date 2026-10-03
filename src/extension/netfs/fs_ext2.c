@@ -1308,8 +1308,15 @@ static int ext2_unlink(NetfsMount *mount, const char *rel)
     if (ext2_api.unlink(data->fs, parent, name, ino, 0) != 0)
 	return -EIO;
 
-    /* Release the data blocks, then the inode itself.  */
-    {
+    /*
+     * Release the data blocks, then the inode itself.  A fast symlink
+     * keeps its target in the inode's own block array, so running the
+     * regular-file truncation on it reads that text as block numbers
+     * and frees unrelated blocks -- e2fsck then reports a bitmap
+     * difference.  Only an inode that actually owns blocks (a regular
+     * file or a slow symlink) has anything to release.
+     */
+    if (inode.i_blocks > 0) {
 	ext2_file_t file;
 
 	if (ext2_api.file_open(data->fs, ino, EXT2_FILE_WRITE, &file) == 0) {
@@ -1400,13 +1407,38 @@ static int ext2_rmdir(NetfsMount *mount, const char *rel)
     return 0;
 }
 
+/*
+ * Is @rel an empty directory?  rename(2) only lets a directory replace
+ * another one when the latter holds nothing besides "." and "..".
+ * Returns 1 when empty, 0 when not, or a negative errno.
+ */
+static int ext2_dir_is_empty(NetfsMount *mount, const char *rel)
+{
+    TALLOC_CTX *context = talloc_new(NULL);
+    NetfsDirent *entries = NULL;
+    size_t count = 0;
+    int status;
+
+    if (context == NULL)
+	return -ENOMEM;
+
+    status = ext2_list(mount, rel, &entries, &count, context);
+    talloc_free(context);
+    if (status < 0)
+	return status;
+
+    return count == 0;
+}
+
 static int ext2_rename(NetfsMount *mount, const char *from, const char *to)
 {
     Ext2Data *data = mount->fs_data;
     ext2_ino_t old_parent;
     ext2_ino_t new_parent;
     ext2_ino_t ino;
+    ext2_ino_t dest_ino;
     struct ext2_inode inode;
+    struct ext2_inode dest_inode;
     char old_name[NAME_MAX + 1];
     char new_name[NAME_MAX + 1];
     int status;
@@ -1426,6 +1458,43 @@ static int ext2_rename(NetfsMount *mount, const char *from, const char *to)
 	return -ENOENT;
     if (ext2_api.read_inode(data->fs, ino, &inode) != 0)
 	return -EIO;
+
+    /*
+     * rename(2) replaces an existing destination.  ext2fs_link() only
+     * appends a directory entry: called on a name that is already
+     * there it stores a second entry with the same name, and the older
+     * one keeps shadowing the new content (e2fsck reports the duplicate
+     * name).  Remove the destination first, with the type rules of
+     * rename(2).
+     */
+    if (ext2_api.lookup(data->fs, new_parent, new_name,
+			(int) strlen(new_name), NULL, &dest_ino) == 0) {
+	if (dest_ino == ino)
+	    return 0;		/* Both names already point to the same file. */
+
+	if (ext2_api.read_inode(data->fs, dest_ino, &dest_inode) != 0)
+	    return -EIO;
+
+	if (S_ISDIR(dest_inode.i_mode)) {
+	    if (!S_ISDIR(inode.i_mode))
+		return -EISDIR;
+
+	    status = ext2_dir_is_empty(mount, to);
+	    if (status < 0)
+		return status;
+	    if (status == 0)
+		return -ENOTEMPTY;
+
+	    status = ext2_rmdir(mount, to);
+	} else {
+	    if (S_ISDIR(inode.i_mode))
+		return -ENOTDIR;
+
+	    status = ext2_unlink(mount, to);
+	}
+	if (status < 0)
+	    return status;
+    }
 
     if (S_ISDIR(inode.i_mode)) {
 	/* Moving a directory also repoints its ".." entry.  */
@@ -1513,6 +1582,11 @@ static int ext2_link(NetfsMount *mount, const char *from, const char *to)
     status = ext2_parent(mount, to, &parent, name);
     if (status < 0)
 	return status;
+
+    /* ext2fs_link() would append a duplicate entry; link(2) wants EEXIST. */
+    if (ext2_api.lookup(data->fs, parent, name, (int) strlen(name),
+			NULL, NULL) == 0)
+	return -EEXIST;
 
     if (ext2_resolve(mount, from, &ino) < 0)
 	return -ENOENT;

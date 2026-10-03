@@ -122,6 +122,50 @@ wait_for_port() {
     [ "$status" -eq 0 ]
 }
 
+@test "netfs replaces an existing destination on a qcow2 image" {
+    check_if_command_exists qemu-img
+    check_if_command_exists mke2fs
+    check_if_command_exists debugfs
+    check_if_command_exists e2fsck
+
+    local raw="$NETFS_TMP/replace.raw"
+    local image="$NETFS_TMP/replace.qcow2"
+    local check="$NETFS_TMP/replace-check.raw"
+
+    dd if=/dev/zero of="$raw" bs=1M count=16 status=none
+    mkdir -p "$NETFS_TMP/seed"
+    printf 'OLD\n' > "$NETFS_TMP/seed/victim.txt"
+    mke2fs -q -t ext4 -F -d "$NETFS_TMP/seed" "$raw"
+    qemu-img convert -f raw -O qcow2 "$raw" "$image"
+
+    # rename(2) replaces an existing destination.  Appending a second
+    # directory entry with the same name would shadow the new content and
+    # leave the filesystem with duplicate names; unlinking a fast symlink
+    # must not read its inline target as block numbers either.
+    run uvroot -r / "--qcow2=$NETFS_MNT:$image" /bin/sh -c \
+        "echo NEW > '$NETFS_MNT/source.txt' &&
+         mv '$NETFS_MNT/source.txt' '$NETFS_MNT/victim.txt' &&
+         ln -s victim.txt '$NETFS_MNT/link.old' &&
+         ln -s other '$NETFS_MNT/link.new' &&
+         mv '$NETFS_MNT/link.old' '$NETFS_MNT/link.new' &&
+         rm -f '$NETFS_MNT/link.new'"
+    [ "$status" -eq 0 ]
+
+    qemu-img convert -f qcow2 -O raw "$image" "$check"
+
+    run debugfs -R 'cat /victim.txt' "$check"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"NEW"* ]]
+
+    # Exactly one entry may carry the destination name.
+    run debugfs -R 'ls -l /' "$check"
+    [ "$status" -eq 0 ]
+    [ "$(grep -c 'victim.txt' <<<"$output")" -eq 1 ]
+
+    run e2fsck -fn "$check"
+    [ "$status" -eq 0 ]
+}
+
 @test "netfs mounts an NBD export read-write" {
     check_if_command_exists qemu-nbd
     check_if_command_exists mke2fs

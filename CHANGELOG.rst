@@ -112,6 +112,23 @@ Changed
   binary works on a target without ``/tmp`` and still reports
   ``uvroot --version``.
 
+Fixed
+~~~~~
+
+- ``netfs`` block images no longer corrupt an ext2/3/4 filesystem when
+  ``rename(2)`` replaces an existing destination.  The driver appended a
+  second directory entry with the same name, so the old content kept
+  shadowing the new one and ``e2fsck`` reported a non-unique file name;
+  it now removes the destination first, with the type rules of
+  ``rename(2)``.  This is what turned ``apk add`` and ``pip install``
+  inside a qcow2-backed root into silently truncated packages.
+- Removing a fast symlink on a ``netfs`` block image no longer runs the
+  regular-file truncation on it, which read the inline target as block
+  numbers and freed unrelated blocks (``ext2fs_block_alloc_stats:
+  Illegal block number`` followed by an inconsistent bitmap).
+- ``link(2)`` on a ``netfs`` block image now reports ``EEXIST`` when the
+  destination already exists instead of appending a duplicate entry.
+
 5.4.1 - 2026-09-07
 ------------------
 

@@ -2736,6 +2736,7 @@ static int handle_sysexit_end(Tracee *tracee, NetfsConfig *config)
 	NetfsMount *old_mount = find_mount_by_host(config, entry->pend_a, &old_rel);
 	NetfsMount *new_mount = find_mount_by_host(config, entry->pend_b, &new_rel);
 	NetfsNode *node;
+	NetfsNode *replaced;
 	NetfsNode *parent;
 	char *copy;
 	char *base;
@@ -2748,11 +2749,22 @@ static int handle_sysexit_end(Tracee *tracee, NetfsConfig *config)
 	if (node == NULL)
 	    break;
 
+	/* The destination, when present, is what the source replaces. */
+	replaced = node_from_rel(old_mount, new_rel);
+	if (replaced == node)
+	    replaced = NULL;
+
 	{
 	    const NetfsDirOps *ops = dir_ops_of(old_mount);
 	    if (ops != NULL && ops->rename != NULL)
 		warn_remote(tracee, old_mount, "rename", old_rel,
 			    ops->rename(old_mount, old_rel, new_rel));
+	}
+
+	/* Keep a single entry for the destination in the mirror tree. */
+	if (replaced != NULL) {
+	    replaced->deleted = true;
+	    forget_child(replaced);
 	}
 
 	copy = talloc_strdup(NULL, new_rel);
