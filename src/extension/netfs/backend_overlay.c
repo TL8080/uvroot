@@ -619,22 +619,31 @@ static int store_delta(OverlayData *data, const char *rel, const char *local)
 	}
 	if (!have_ranges)
 	    have_ranges = true;
-	/* Ranges are coalesced lazily by the reader; append is enough. */
 	{
 	    OverlayEntry *r = overlay_entry_find(&data->db, rel);
-	    OverlayRange *range = calloc(1, sizeof(*range));
+	    OverlayRange *range;
+	    OverlayRange *previous = NULL;
 	    OverlayRange **tail;
 
-	    if (r == NULL || range == NULL) {
-		free(range);
+	    if (r == NULL) {
 		status = -ENOMEM;
 		goto out;
 	    }
-	    range->offset = offset;
-	    range->length = local_len;
 	    for (tail = &r->ranges; *tail != NULL; tail = &(*tail)->next)
-		;
-	    *tail = range;
+		previous = *tail;
+	    if (previous != NULL
+		&& previous->offset + previous->length == offset) {
+		previous->length += local_len;
+	    } else {
+		range = calloc(1, sizeof(*range));
+		if (range == NULL) {
+		    status = -ENOMEM;
+		    goto out;
+		}
+		range->offset = offset;
+		range->length = local_len;
+		*tail = range;
+	    }
 	}
     }
 

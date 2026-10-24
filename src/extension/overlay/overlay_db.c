@@ -246,15 +246,23 @@ bool overlay_db_hidden(OverlayDb *db, const char *rel)
 
 static void range_append(OverlayEntry *entry, uint64_t offset, uint64_t length)
 {
-    OverlayRange *range = calloc(1, sizeof(*range));
+    OverlayRange *range;
+    OverlayRange *previous = NULL;
     OverlayRange **tail;
 
+    for (tail = &entry->ranges; *tail != NULL; tail = &(*tail)->next)
+	previous = *tail;
+    if (previous != NULL
+	&& previous->offset + previous->length == offset) {
+	previous->length += length;
+	return;
+    }
+
+    range = calloc(1, sizeof(*range));
     if (range == NULL)
 	return;
     range->offset = offset;
     range->length = length;
-    for (tail = &entry->ranges; *tail != NULL; tail = &(*tail)->next)
-	;
     *tail = range;
 }
 
@@ -329,7 +337,8 @@ static int db_parse_entry(OverlayDb *db, char *line)
 int overlay_db_load(OverlayDb *db, const char *path)
 {
     FILE *file;
-    char line[OVERLAY_PATH_MAX * 2];
+    char *line = NULL;
+    size_t line_capacity = 0;
 
     memset(db, 0, sizeof(*db));
     db->path = xstrdup(path);
@@ -344,7 +353,7 @@ int overlay_db_load(OverlayDb *db, const char *path)
 	return -errno;
     }
 
-    while (fgets(line, sizeof(line), file) != NULL) {
+    while (getline(&line, &line_capacity, file) >= 0) {
 	char *newline = strchr(line, '\n');
 
 	if (newline != NULL)
@@ -390,11 +399,13 @@ int overlay_db_load(OverlayDb *db, const char *path)
 	    goto malformed;
 	}
     }
+    free(line);
     fclose(file);
     overlay_entry_drop_duplicates(db);
     return 0;
 
   malformed:
+    free(line);
     fclose(file);
     overlay_db_free(db);
     return -EINVAL;
