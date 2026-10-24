@@ -154,11 +154,32 @@ On Termux the libraries come from ``libcurl``, ``samba`` (which provides
 ``libext2fs``) and ``zlib``; ``libnbd`` and ``libiscsi`` are not packaged
 there.
 
+WireGuard validation
+====================
+
+The user-space WireGuard bridge was validated with RethinkDNS on an
+Android device: the container's ``10.77.0.1:80`` is forwarded to a
+loopback web service, and the device resolves ``uvrootweb.ce`` through
+the tunnel.  No host port 80 listener and no kernel WireGuard device are
+used.
+
+.. image:: doc/uvroot/images/rethinkdns-wireguard-connected.png
+   :width: 300
+   :alt: RethinkDNS uvroot-wg connected
+
+.. image:: doc/uvroot/images/uvrootweb-ce-browser.png
+   :width: 300
+   :alt: Android browser showing uvrootweb.ce
+
+The full configuration and verification commands are in
+`WireGuard on Android / RethinkDNS <doc/wireguard-android.rst>`_.
+
 Manuals
 =======
 
 - `uvroot <doc/uvroot/manual.rst>`_
 - `CARE <doc/care/manual.rst>`_
+- `WireGuard Android validation <doc/wireguard-android.rst>`_
 
 Environment
 ===========
