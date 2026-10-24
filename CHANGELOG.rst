@@ -130,6 +130,11 @@ Changed
 Fixed
 ~~~~~
 
+- ``--wg=...:conf=/path`` now gives the file body to uvroot's built-in
+  WireGuard engine.  Previously only an external implementation received
+  the parsed file; the built-in engine saw the literal ``conf=`` string,
+  reported ``no PrivateKey`` and silently fell back to NAT without
+  opening the configured UDP listener.
 - ``netfs`` block images no longer corrupt an ext2/3/4 filesystem when
   ``rename(2)`` replaces an existing destination.  The driver appended a
   second directory entry with the same name, so the old content kept

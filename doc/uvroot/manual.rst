@@ -447,6 +447,31 @@ traffic falls back to a user-mode NAT through the host stack.
     privilege separation child chroots and authenticates through PAM), so
     a server without privilege separation is needed.
 
+    With ``conf=/path`` the file is read on the host before the guest
+    starts and its body is handed to the built-in engine as well as to an
+    external implementation.  A server-side configuration can therefore
+    keep the tunnel and the user-space forwarders together::
+
+        [Interface]
+        PrivateKey = <container private key>
+        Address = 10.77.0.1/24
+        ListenPort = 51820
+        [Peer]
+        PublicKey = <peer public key>
+        AllowedIPs = 10.77.0.2/32
+        PersistentKeepalive = 25
+        forward=10.77.0.1:80=127.0.0.1:8080
+        forward_udp=10.77.0.1:53=127.0.0.1:5353
+
+    The matching client configuration uses ``Endpoint = <host>:51820`` and
+    ``AllowedIPs = 10.77.0.1/32``.  ``forward`` terminates a TCP flow in
+    user space and relays it to a local service; ``forward_udp`` does the
+    same for datagrams.  Neither forwarder needs a kernel listener, so a
+    web service can be exposed as port 80 over the tunnel without binding
+    host port 80.  DNS is not implemented by uvroot itself; point the
+    client's DNS at the tunnel address and run the resolver on the
+    forwarded host port.
+
 --net-bridge=string
     Select the WireGuard bridge implementation.
 

@@ -694,6 +694,14 @@ int netvirt_bridge_attach(Tracee *tracee, NetVirtConfig *config,
 	text = talloc_strdup(config, buffer);
 	if (text == NULL)
 	    return -1;
+	/*
+	 * The built-in engine is configured later from dev->wg_conf, not
+	 * from the temporary text above; keep the file body there too.
+	 */
+	TALLOC_FREE(dev->wg_conf);
+	dev->wg_conf = talloc_strdup(config, text);
+	if (dev->wg_conf == NULL)
+	    return -1;
     }
 
     wg = wg_parse(text);
