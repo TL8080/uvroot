@@ -42,6 +42,9 @@ What this fork adds
   (tailscale/intranet), ``ip link``/``ip addr``/``ip route`` work on them
   without any privilege, and a built-in user-space WireGuard engine
   (interoperable with the kernel driver) carries the traffic
+- ``--overlay``: a writable type 1 over a read-only type 2, with whole-file
+  (``bind``) or sparse block-delta (``block``) copy-up; ``/dev/bkc`` and
+  ``/dev/bme`` inspect and permanently merge block deltas
 - ``/proc`` and ``df`` storage-information virtualisation for virtual roots
 
 A detailed, flag-by-flag comparison with upstream PRoot — plus usage recipes —
@@ -70,6 +73,7 @@ Bind mounts, network/image backends, virtual permissions and read-only roots::
     uvroot -r ~/alpine --vperm --vperm-id=0:0 /bin/sh
     uvroot -r ~/ubuntu -i 0:0 --read-only --ro=/tmp /bin/bash
     uvroot -r ~/alpine --net -i 0:0 /bin/sh   # veth0 + vtun over WireGuard
+    uvroot -r / --overlay=block,/mnt/ovl,$HOME/upper,$HOME/lower -i 0:0 /bin/sh
 
 A disk image or an iSCSI/NBD device used as the guest root
 (``--img=/:...``, ``--iscsi=/:...``) contains none of the host's

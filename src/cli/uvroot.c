@@ -428,6 +428,18 @@ static int handle_option_qcow2(Tracee *tracee, const Cli *cli UNUSED,
 }
 
 /*
+ * --overlay=<bind|block>,<guest>,<upper>,<lower>
+ *
+ * type 1 (upper) is writable, type 2 (lower) is read-only.  The fixed
+ * order is mode, guest mount point, type 1, type 2.
+ */
+static int handle_option_overlay(Tracee *tracee, const Cli *cli UNUSED,
+				 const char *value)
+{
+    return netfs_add_overlay_mount(tracee, value);
+}
+
+/*
  * Virtual network.  --net installs the two mapped devices (veth0 for
  * ordinary I/O, vtun for tailscale/intranet traffic) bridged over
  * WireGuard; --net-if/--net-route/--wg/--net-bridge tune them.

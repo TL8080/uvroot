@@ -100,6 +100,8 @@ static int handle_option_img(Tracee * tracee, const Cli * cli,
 			     const char *value);
 static int handle_option_qcow2(Tracee * tracee, const Cli * cli,
 			       const char *value);
+static int handle_option_overlay(Tracee * tracee, const Cli * cli,
+				 const char *value);
 static int handle_option_net(Tracee * tracee, const Cli * cli,
 			     const char *value);
 static int handle_option_net_if(Tracee * tracee, const Cli * cli,
@@ -532,6 +534,27 @@ Based on PRoot, Copyright (C) 2015 STMicroelectronics.",
 		 .detail =
 		 "\tRegistered for future work; the QCOW2 backend and the\n\
 \tfilesystem driver that will interpret the image are not implemented yet.",
+		 },
+		{.class = "Overlay options",
+		 .arguments = {
+			       {.name = "--overlay",.separator = '=',.value =
+				"string"},
+			       {.name = NULL,.separator = '\0',.value =
+				NULL}},
+		 .handler = handle_option_overlay,
+		 .description =
+		 "Merge a writable type 1 over a read-only type 2.",
+		 .detail =
+		 "\tThe syntax is *mode*,*guest*,*type1*,*type2* in that fixed\n\
+\torder.  *mode* is bind (whole-file copy-up) or block (only modified\n\
+\tblocks are stored in type 1).  Reads use type 1 first and fall back to\n\
+\ttype 2; new files go to type 1, and modifying a type 2 file copies it\n\
+\tto type 1.  A .overlay database in the type 1 root records whiteouts\n\
+\tand, in block mode, the sparse block list and SHA-256 of the merged\n\
+\tcontent.  The /dev/bkc and /dev/bme helpers inspect and permanently\n\
+\tmerge those deltas (bkc [-r] PATH, bme [-h] [-r] PATH); merging is\n\
+\tallowed for the virtual root or the file owner when --vperm is used.\n\
+\tExample: --overlay=block,/mnt/ovl,/var/upper,/var/lower",
 		 },
 		{.class = "Virtual permission options",
 		 .arguments = {

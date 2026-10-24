@@ -292,6 +292,7 @@ extern int netfs_callback(Extension * extension, ExtensionEvent event,
 			  intptr_t d1, intptr_t d2);
 extern int netfs_add_mount(Tracee * tracee, const char *spec,
 			   const char *forced_scheme);
+extern int netfs_add_overlay_mount(Tracee * tracee, const char *spec);
 /*
  * Return the guest mount point whose local cache is @host, or NULL when
  * @host does not belong to a netfs mount.  Used by other extensions
@@ -393,6 +394,13 @@ extern const NetfsBackend netfs_backend_ftp;
 
 /* backend_smb.c */
 extern const NetfsBackend netfs_backend_smb;
+
+/* backend_overlay.c */
+extern const NetfsBackend netfs_backend_overlay;
+extern int netfs_overlay_init(NetfsMount * mount, const char *mode,
+			       const char *upper, const char *lower,
+			       const char *guest);
+extern void netfs_overlay_set_read_only(NetfsMount * mount);
 
 /* backend_reserved.c */
 extern const NetfsBackend netfs_backend_nfs;

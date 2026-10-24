@@ -31,6 +31,16 @@ Added
   libnfs, libnbd, libiscsi, libext2fs and zlib are resolved with
   ``dlopen()``, and the QCOW2 translation (including COW writes,
   refcount maintenance and compressed clusters) is implemented in tree.
+- ``--overlay=<bind|block>,<guest>,<type1>,<type2>`` presents a writable
+  type 1 over a read-only type 2.  Reads take type 1 first and fall back
+  to type 2; new files and modified files stay in type 1.  Bind mode
+  copies a whole file up, while block mode stores only the modified
+  4 KiB blocks in a sparse type 1 file.  An ``.overlay`` database in the
+  type 1 root records whiteouts and, for block mode, the logical size,
+  mode, modified ranges and SHA-256 of the merged content.  ``/dev/bkc``
+  and ``/dev/bme`` inspect and permanently merge deltas; merging is
+  allowed for the virtual root or the file owner when ``--vperm`` is
+  enabled.
 - Two containers can now use the same image at the same time without
   corrupting it.  The first process to open the image owns its
   filesystem driver and serves the others, which forward their directory
@@ -128,6 +138,10 @@ Fixed
   Illegal block number`` followed by an inconsistent bitmap).
 - ``link(2)`` on a ``netfs`` block image now reports ``EEXIST`` when the
   destination already exists instead of appending a duplicate entry.
+- Directory removal performed by ``rm -rf`` through
+  ``unlinkat(..., AT_REMOVEDIR)`` is now mirrored to ``netfs`` and overlay
+  backends just like ``rmdir(2)``; previously the directory stayed visible
+  in the remote or lower tree after the next mount.
 - Removing one name of a hard-linked file on a ``netfs`` block image only
   drops that link now.  The inode and its blocks were released even when
   other names still referenced them, which left an inode marked free but

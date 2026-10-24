@@ -169,6 +169,7 @@ OBJECTS += \
 	extension/portmap/portmap.o \
 	extension/portmap/map.o \
 	extension/netfs/netfs.o \
+	extension/netfs/backend_overlay.o \
 	extension/netfs/backend_curl.o \
 	extension/netfs/backend_smb.o \
 	extension/netfs/share.o \
@@ -179,6 +180,8 @@ OBJECTS += \
 	extension/netfs/backend_iscsi.o \
 	extension/netfs/fs_ext2.o \
 	extension/netfs/backend_reserved.o \
+	extension/overlay/overlay_db.o \
+	extension/overlay/overlay_sha256.o \
 	extension/vperm/vperm.o \
 	extension/vpid/vpid.o \
 	extension/netvirt/netvirt.o \
@@ -217,8 +220,8 @@ CARE_OBJECTS = 				\
 	extension/care/extract.o	\
 	extension/care/archive.o
 
-.DEFAULT_GOAL = uvroot
-all: uvroot
+.DEFAULT_GOAL = all
+all: uvroot overlayctl
 
 ######################################################################
 # Beautified output
@@ -301,6 +304,16 @@ OBJIFY = $($(quiet)GEN)									\
 
 uvroot: $(OBJECTS)
 	$(LINK)
+
+# The helper must be static and must match the guest architecture.  The
+# default uses zig's musl target; cross builds can override it, e.g.
+# make OVERLAYCTL_CC="zig cc -target aarch64-linux-musl".
+OVERLAYCTL_CC ?= $(shell command -v zig >/dev/null 2>&1 && echo 'zig cc -target' $$(uname -m)-linux-musl || echo $(CC))
+OVERLAYCTL_SRCS = overlayctl.c extension/overlay/overlay_db.c extension/overlay/overlay_sha256.c
+
+overlayctl: $(OVERLAYCTL_SRCS)
+	@echo "  CC	$@"; $(OVERLAYCTL_CC) $(CPPFLAGS) $(CFLAGS) -static -o $@ $^ || \
+		$(OVERLAYCTL_CC) $(CPPFLAGS) $(CFLAGS) -o $@ $^
 
 care: $(OBJECTS) $(CARE_OBJECTS)
 	$(LINK) $(CARE_LDFLAGS)
@@ -416,16 +429,17 @@ BINDIR ?= $(PREFIX)/bin
 
 .PHONY: clean distclean install install-care uninstall
 clean distclean:
-	-$(RM) -f $(CHECK_OBJECTS) $(CHECK_PROGRAMS) $(CHECK_RESULTS) $(OBJECTS) $(CARE_OBJECTS) $(LOADER_OBJECTS) $(LOADER-m32_OBJECTS) uvroot care loader/loader loader/loader-m32 cli/care-manual.o $(DEPS) build.h licenses uvroot.py uvroot_wrap.c
+	-$(RM) -f $(CHECK_OBJECTS) $(CHECK_PROGRAMS) $(CHECK_RESULTS) $(OBJECTS) $(CARE_OBJECTS) $(LOADER_OBJECTS) $(LOADER-m32_OBJECTS) uvroot overlayctl care loader/loader loader/loader-m32 cli/care-manual.o $(DEPS) build.h licenses uvroot.py uvroot_wrap.c
 
-install: uvroot
-	$($(quiet)INSTALL) -D $< $(DESTDIR)$(BINDIR)/$<
+install: uvroot overlayctl
+	$($(quiet)INSTALL) -D $< $(DESTDIR)$(BINDIR)/uvroot
+	$($(quiet)INSTALL) -D overlayctl $(DESTDIR)$(BINDIR)/overlayctl
 
 install-care: care
 	$($(quiet)INSTALL) -D $< $(DESTDIR)$(BINDIR)/$<
 
 uninstall:
-	-$(RM) -f $(DESTDIR)$(BINDIR)/uvroot
+	-$(RM) -f $(DESTDIR)$(BINDIR)/uvroot $(DESTDIR)$(BINDIR)/overlayctl
 
 uninstall-care:
 	-$(RM) -f $(DESTDIR)$(BINDIR)/care

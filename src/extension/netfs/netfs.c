@@ -2456,7 +2456,8 @@ static int handle_sysenter_end(Tracee *tracee, NetfsConfig *config,
 
 	ops = dir_ops_of(mount);
 	if (mount->backend != NULL
-	    && mount->backend->kind == NETFS_KIND_BLOCK
+	    && (mount->backend->kind == NETFS_KIND_BLOCK
+		|| mount->backend == &netfs_backend_overlay)
 	    && !mount->read_only
 	    && ((is_symlink && ops != NULL && ops->symlink != NULL)
 		|| (!is_symlink && ops != NULL && ops->link != NULL))) {
@@ -2612,10 +2613,27 @@ static int handle_sysexit_end(Tracee *tracee, NetfsConfig *config)
 	const char *rel;
 	NetfsMount *mount = find_mount_by_host(config, entry->pend_a, &rel);
 	NetfsNode *node;
+	bool remove_dir = false;
 
 	if (mount == NULL)
 	    break;
+	if (sysnum == PR_unlinkat) {
+	    word_t flags = peek_reg(tracee, ORIGINAL, SYSARG_3);
+
+	    remove_dir = (flags & AT_REMOVEDIR) != 0;
+	}
 	node = node_from_rel(mount, rel);
+	if (remove_dir) {
+	    if (node != NULL && node->is_dir) {
+		const NetfsDirOps *ops = dir_ops_of(mount);
+		if (ops != NULL && ops->rmdir != NULL && !mount->read_only)
+		    warn_remote(tracee, mount, "remove directory", rel,
+				ops->rmdir(mount, rel));
+		node->deleted = true;
+		forget_child(node);
+	    }
+	    break;
+	}
 	if (node != NULL && !node->is_dir) {
 	    const NetfsDirOps *ops = dir_ops_of(mount);
 	    if (ops != NULL && ops->unlink != NULL && !mount->read_only)
@@ -3521,6 +3539,10 @@ void netfs_finalize(Tracee *tracee)
 	    }
 	}
     }
+    for (mount = config->mounts; mount != NULL; mount = mount->next) {
+	if (mount->backend == &netfs_backend_overlay && mount->read_only)
+	    netfs_overlay_set_read_only(mount);
+    }
 
     for (mount = config->mounts; mount != NULL; mount = mount->next) {
 	const char *image;
@@ -3890,5 +3912,247 @@ int netfs_add_mount(Tracee *tracee, const char *spec, const char *forced_scheme)
     note(tracee, INFO, USER, "netfs: %s mounted on %s", mount->display,
 	 mount->guest);
 
+    return 0;
+}
+
+/*
+ * --overlay=<bind|block>,<guest>,<upper>,<lower>
+ *
+ * The merged view is served through the ordinary netfs cache, so the
+ * overlay backend only has to answer directory/content questions.  The
+ * hidden /.uvroot-overlay paths are used by the /dev/bkc and /dev/bme
+ * helpers to reach the two trees directly.
+ */
+static int mkdir_recursive_path(const char *path)
+{
+    char buffer[PATH_MAX];
+    char *cursor;
+
+    if (snprintf(buffer, sizeof(buffer), "%s", path) >= (int) sizeof(buffer))
+	return -ENAMETOOLONG;
+    for (cursor = buffer + 1; *cursor != '\0'; cursor++) {
+	if (*cursor != '/')
+	    continue;
+	*cursor = '\0';
+	if (mkdir(buffer, 0700) < 0 && errno != EEXIST)
+	    return -errno;
+	*cursor = '/';
+    }
+    if (mkdir(buffer, 0700) < 0 && errno != EEXIST)
+	return -errno;
+    return 0;
+}
+
+int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
+{
+    Extension *extension;
+    NetfsConfig *config;
+    NetfsMount *mount;
+    NetfsMount *other;
+    char *copy;
+    char *fields[4];
+    char *cursor;
+    int count = 0;
+    const char *mode;
+    const char *guest;
+    const char *upper_arg;
+    const char *lower_arg;
+    char upper[PATH_MAX];
+    char lower[PATH_MAX];
+    char cache[PATH_MAX];
+    char helper[PATH_MAX];
+    char resolved[PATH_MAX];
+    const char *cache_root;
+    int status;
+
+    if (spec == NULL || spec[0] == '\0') {
+	note(tracee, ERROR, USER, "overlay: empty specification");
+	return -1;
+    }
+    copy = talloc_strdup(tracee->ctx, spec);
+    if (copy == NULL)
+	return -1;
+    cursor = copy;
+    while (count < 4) {
+	fields[count++] = cursor;
+	cursor = strchr(cursor, ',');
+	if (cursor == NULL)
+	    break;
+	*cursor++ = '\0';
+    }
+    if (count != 4 || cursor != NULL) {
+	note(tracee, ERROR, USER,
+	     "overlay: expected mode,guest,upper,lower in \"%s\"", spec);
+	return -1;
+    }
+    mode = fields[0];
+    guest = fields[1];
+    upper_arg = fields[2];
+    lower_arg = fields[3];
+    if (strcmp(mode, "bind") != 0 && strcmp(mode, "block") != 0) {
+	note(tracee, ERROR, USER,
+	     "overlay: mode must be \"bind\" or \"block\", not \"%s\"", mode);
+	return -1;
+    }
+    if (guest[0] != '/' || upper_arg[0] != '/' || lower_arg[0] != '/') {
+	note(tracee, ERROR, USER,
+	     "overlay: guest, upper and lower paths must be absolute");
+	return -1;
+    }
+
+    extension = get_extension(tracee, netfs_callback);
+    if (extension == NULL) {
+	status = initialize_extension(tracee, netfs_callback, NULL);
+	if (status < 0)
+	    return status;
+	extension = get_extension(tracee, netfs_callback);
+	if (extension == NULL)
+	    return -1;
+    }
+    config = config_of(extension);
+
+    for (other = config->mounts; other != NULL; other = other->next) {
+	if (other->backend == &netfs_backend_overlay) {
+	    note(tracee, ERROR, USER,
+		 "overlay: only one overlay mount is supported per container");
+	    return -1;
+	}
+    }
+
+    if (snprintf(upper, sizeof(upper), "%s", upper_arg) >= (int) sizeof(upper)
+	|| snprintf(lower, sizeof(lower), "%s", lower_arg) >= (int) sizeof(lower))
+	return -1;
+    if (realpath(lower, resolved) == NULL) {
+	note(tracee, ERROR, USER, "overlay: lower \"%s\": %s", lower,
+	     strerror(errno));
+	return -1;
+    }
+    snprintf(lower, sizeof(lower), "%s", resolved);
+    {
+	struct stat st;
+
+	if (stat(lower, &st) < 0 || !S_ISDIR(st.st_mode)) {
+	    note(tracee, ERROR, USER,
+		 "overlay: lower \"%s\" is not a directory", lower);
+	    return -1;
+	}
+    }
+    status = mkdir_recursive_path(upper);
+    if (status < 0) {
+	note(tracee, ERROR, USER, "overlay: cannot create upper \"%s\": %s",
+	     upper, strerror(-status));
+	return -1;
+    }
+    if (realpath(upper, resolved) == NULL) {
+	note(tracee, ERROR, USER, "overlay: upper \"%s\": %s", upper,
+	     strerror(errno));
+	return -1;
+    }
+    snprintf(upper, sizeof(upper), "%s", resolved);
+
+    {
+	size_t upper_length = strlen(upper);
+	size_t lower_length = strlen(lower);
+
+	if (strcmp(upper, lower) == 0
+	    || (upper_length < lower_length
+		&& strncmp(upper, lower, upper_length) == 0
+		&& lower[upper_length] == '/')
+	    || (lower_length < upper_length
+		&& strncmp(lower, upper, lower_length) == 0
+		&& upper[lower_length] == '/')) {
+	    note(tracee, ERROR, USER,
+		 "overlay: the upper and lower trees must not contain each other");
+	    return -1;
+	}
+    }
+
+    cache_root = netfs_cache_root();
+    if (cache_root == NULL) {
+	note(tracee, ERROR, SYSTEM, "overlay: cannot create the cache directory");
+	return -1;
+    }
+    snprintf(cache, sizeof(cache), "%s/m%u", cache_root, config->next_mount_id++);
+    if (mkdir(cache, 0700) < 0 && errno != EEXIST) {
+	note(tracee, ERROR, SYSTEM, "overlay: cannot create \"%s\": %s",
+	     cache, strerror(errno));
+	return -1;
+    }
+    if (realpath(cache, resolved) != NULL)
+	snprintf(cache, sizeof(cache), "%s", resolved);
+
+    mount = talloc_zero(config, NetfsMount);
+    if (mount == NULL)
+	return -1;
+    talloc_set_destructor(mount, release_mount);
+    mount->backend = &netfs_backend_overlay;
+    mount->tracee = tracee;
+    mount->read_only = config->read_only;
+    mount->scheme = talloc_strdup(mount, "overlay");
+    mount->url = talloc_strdup(mount, spec);
+    mount->guest = talloc_strdup(mount, guest);
+    mount->cache = talloc_strdup(mount, cache);
+    mount->display = talloc_zero_size(mount, PATH_MAX);
+    if (mount->scheme == NULL || mount->url == NULL || mount->guest == NULL
+	|| mount->cache == NULL || mount->display == NULL)
+	return -1;
+    snprintf(mount->display, PATH_MAX, "overlay:%s", guest);
+
+    mount->root.is_dir = true;
+    mount->root.materialized = true;
+    mount->root.mount = mount;
+
+    status = netfs_overlay_init(mount, mode, upper, lower, guest);
+    if (status < 0) {
+	note(tracee, ERROR, USER, "overlay: cannot initialize \"%s\": %s",
+	     guest, strerror(-status));
+	TALLOC_FREE(mount);
+	return -1;
+    }
+
+    if (new_binding(tracee, mount->cache, mount->guest, true) == NULL) {
+	note(tracee, WARNING, INTERNAL,
+	     "overlay: cannot bind \"%s\" into \"%s\"", mount->cache,
+	     mount->guest);
+	TALLOC_FREE(mount);
+	return -1;
+    }
+
+    /*
+     * The bkc/bme helpers need a stable view of both trees and of the
+     * database.  They are ordinary bindings; the helper itself is the
+     * same static binary as /dev/bkc and /dev/bme.
+     */
+    if (new_binding(tracee, upper, "/.uvroot-overlay/upper", true) == NULL
+	|| new_binding(tracee, lower, "/.uvroot-overlay/lower", true) == NULL)
+	note(tracee, WARNING, USER,
+	     "overlay: cannot expose the bkc/bme helper paths");
+
+    {
+	ssize_t length = readlink("/proc/self/exe", helper,
+				 sizeof(helper) - 1);
+
+	if (length > 0) {
+	    char *slash;
+
+	    helper[length] = '\0';
+	    slash = strrchr(helper, '/');
+	    if (slash != NULL) {
+		*slash = '\0';
+		if (snprintf(resolved, sizeof(resolved), "%s/overlayctl", helper)
+		    < (int) sizeof(resolved)
+		    && access(resolved, X_OK) == 0) {
+		    (void) new_binding(tracee, resolved, "/dev/bkc", false);
+		    (void) new_binding(tracee, resolved, "/dev/bme", false);
+		}
+	    }
+	}
+    }
+
+    mount->next = config->mounts;
+    config->mounts = mount;
+
+    note(tracee, INFO, USER, "overlay: %s mounted on %s (%s)",
+	 mount->display, guest, mode);
     return 0;
 }

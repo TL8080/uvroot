@@ -26,3 +26,5 @@ test/*
 !test/helper.bash
 !test/docker
 !test/unit
+
+src/overlayctl

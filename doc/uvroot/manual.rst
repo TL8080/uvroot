@@ -475,6 +475,45 @@ traffic falls back to a user-mode NAT through the host stack.
     coherent process tree.  For example
     ``uvroot --vpid=1 -r / /bin/sh`` makes the shell believe it is pid 1.
 
+Overlay
+-------
+
+--overlay=string
+    Merge a writable type 1 over a read-only type 2.
+
+    The value has four comma-separated fields in this fixed order:
+    *mode*, *guest mount point*, *type 1*, *type 2*.  *mode* is ``bind``
+    (a modified file is copied whole into type 1) or ``block`` (only the
+    modified 4 KiB blocks are stored in a sparse file in type 1).  Reads
+    check type 1 first and fall back to type 2; new files are created in
+    type 1.  Deleting a type 2 object records a whiteout in the
+    ``.overlay`` database in the type 1 root, so the path stays hidden
+    even though the read-only tree cannot be changed.
+
+    In block mode the database also records the logical size, mode,
+    modified ranges and a SHA-256 of the merged content.  A read
+    materializes the temporary merged file in the netfs cache; the
+    helper commands bound at ``/dev/bkc`` and ``/dev/bme`` inspect and
+    permanently merge those deltas::
+
+        bkc [-r] PATH          # report unmerged data and hash state
+        bme [-h] [-r] PATH     # merge into type 1; -h verifies first
+
+    ``bkc`` exits 0 when the path is merged and consistent, 1 when it
+    has unmerged blocks, and 2 on an error or hash mismatch.  ``bme``
+    requires the virtual root or the file owner when ``--vperm`` is
+    enabled; without vperm the normal host ownership rules apply.  The
+    helper is built as a static ``overlayctl`` next to ``uvroot``;
+    ``make install`` installs both, and the mount looks for it in the
+    directory of the running uvroot binary.
+
+    ::
+
+        uvroot -r / --overlay=bind,/mnt/ovl,/tmp/upper,/tmp/lower /bin/sh
+        uvroot -r / --overlay=block,/mnt/ovl,/tmp/upper,/tmp/lower --vperm-id=0:0 /bin/sh
+        /dev/bkc -r /mnt/ovl
+        /dev/bme -h /mnt/ovl/path
+
 Virtual permission options
 --------------------------
 
