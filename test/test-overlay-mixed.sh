@@ -85,8 +85,17 @@ fi
         echo bkc:$?
         /dev/bme /mnt/ovl/lower.txt
         echo bme:$?
+        printf 'QCOW2READ:'; cat /img/new.txt
+        printf 'RAWREAD:'; cat /raw/new.txt
+        printf 'NBDREAD:'; cat /nbd/new.txt
+        printf 'OVERLAYREAD:'; cat /mnt/ovl/lower.txt
+        printf 'OVERLAYNEW:'; cat /mnt/ovl/new.txt
     ' >"$R/run.log" 2>&1
 run_status=$?
+
+echo "--- block-mode mixed run (real output) ---"
+cat "$R/run.log"
+echo "--- end block-mode output ---"
 
 ok "mixed container exits successfully" "$run_status" "0"
 ok "QCOW2 image is readable" \
@@ -101,6 +110,16 @@ ok "overlay block check reports unmerged data" \
     "$(grep -c 'bkc:1' "$R/run.log")" "1"
 ok "overlay merge succeeds" \
     "$(grep -c 'bme:0' "$R/run.log")" "1"
+ok "QCOW2 write is readable back" \
+    "$(grep -c '^QCOW2READ:image-new$' "$R/run.log")" "1"
+ok "raw write is readable back" \
+    "$(grep -c '^RAWREAD:raw-new$' "$R/run.log")" "1"
+ok "NBD write is readable back" \
+    "$(grep -c '^NBDREAD:nbd-new$' "$R/run.log")" "1"
+ok "merged overlay is readable back" \
+    "$(grep -c '^OVERLAYREAD:overlay-changed$' "$R/run.log")" "1"
+ok "overlay new file is readable back" \
+    "$(grep -c '^OVERLAYNEW:overlay-new$' "$R/run.log")" "1"
 ok "overlay upper keeps the new file" \
     "$(cat "$R/upper/new.txt" 2>/dev/null)" "overlay-new"
 ok "overlay lower is untouched" \
@@ -120,8 +139,16 @@ ok "overlay upper has the merged file" \
         cat /nbd/new.txt
         cat /mnt/ovl2/bind.txt
         printf "bind-new\n" > /mnt/ovl2/new.txt
+        printf 'QCOW2READ:'; cat /img/new.txt
+        printf 'RAWREAD:'; cat /raw/new.txt
+        printf 'NBDREAD:'; cat /nbd/new.txt
+        printf 'OVERLAYREAD:'; cat /mnt/ovl2/new.txt
     ' >"$R/bind.log" 2>&1
 bind_status=$?
+
+echo "--- bind-mode mixed run (real output) ---"
+cat "$R/bind.log"
+echo "--- end bind-mode output ---"
 
 ok "bind-mode mixed container exits successfully" "$bind_status" "0"
 ok "bind-mode sees all image writes" \
@@ -132,6 +159,14 @@ ok "bind-mode sees all NBD writes" \
     "$(grep -c '^nbd-new$' "$R/bind.log")" "1"
 ok "bind-mode overlay lower is readable" \
     "$(grep -c '^bind-lower$' "$R/bind.log")" "1"
+ok "bind-mode QCOW2 write is readable back" \
+    "$(grep -c '^QCOW2READ:image-new$' "$R/bind.log")" "1"
+ok "bind-mode raw write is readable back" \
+    "$(grep -c '^RAWREAD:raw-new$' "$R/bind.log")" "1"
+ok "bind-mode NBD write is readable back" \
+    "$(grep -c '^NBDREAD:nbd-new$' "$R/bind.log")" "1"
+ok "bind-mode overlay write is readable back" \
+    "$(grep -c '^OVERLAYREAD:bind-new$' "$R/bind.log")" "1"
 ok "bind-mode overlay keeps the new file in type 1" \
     "$(cat "$R/upper2/new.txt" 2>/dev/null)" "bind-new"
 
