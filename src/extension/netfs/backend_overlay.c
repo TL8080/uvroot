@@ -1184,6 +1184,77 @@ static int sync_upper_all(OverlayData *data)
     return source_put_tree(data, "");
 }
 
+
+/*
+ * Atomic editors write a temporary file and rename it over the target.
+ * Treating that rename as a full copy would silently turn a block-mode
+ * upper into a whole-file copy and drop the delta entry.  When the
+ * destination exists in the lower layer, build the destination delta
+ * from the source content instead.
+ */
+static int rename_as_delta(OverlayData *data, const char *from,
+			   const char *to, const char *upper_from,
+			   const char *lower_from, bool source_in_lower)
+{
+    char lower_to[OVERLAY_PATH_MAX];
+    char upper_to[OVERLAY_PATH_MAX];
+    char temporary[OVERLAY_PATH_MAX + 64];
+    struct stat source_st;
+    struct stat lower_st;
+    OverlayEntry *entry;
+    int status;
+
+    if (overlay_join(lower_to, sizeof(lower_to), data->db.lower, to) < 0
+	|| overlay_join(upper_to, sizeof(upper_to), data->db.upper, to) < 0)
+	return -ENAMETOOLONG;
+    if (lstat(lower_to, &lower_st) < 0 || !S_ISREG(lower_st.st_mode))
+	return -ENOTSUP;
+    status = effective_lstat(data, from, &source_st, NULL);
+    if (status < 0)
+	return status;
+    if (!S_ISREG(source_st.st_mode))
+	return -ENOTSUP;
+
+    if (snprintf(temporary, sizeof(temporary), "/tmp/.uvroot-rename.%ld",
+		 (long) getpid()) >= (int) sizeof(temporary))
+	return -ENAMETOOLONG;
+    unlink(temporary);
+
+    entry = overlay_entry_find(&data->db, from);
+    if (entry != NULL && entry->block) {
+	status = overlay_delta_merge(&data->db, entry, NULL, NULL, temporary);
+    } else if (lstat(upper_from, &(struct stat){ 0 }) == 0) {
+	status = overlay_copy_file(upper_from, temporary, source_st.st_mode);
+    } else {
+	status = overlay_copy_file(lower_from, temporary, source_st.st_mode);
+    }
+    if (status < 0) {
+	unlink(temporary);
+	return status;
+    }
+
+    (void) remove_upper_tree(upper_from);
+    overlay_entry_remove_tree(&data->db, from);
+    if (source_in_lower) {
+	OverlayEntry *whiteout = overlay_entry_get(&data->db, from, true);
+
+	if (whiteout != NULL)
+	    whiteout->deleted = true;
+    }
+
+    (void) remove_upper_tree(upper_to);
+    overlay_entry_remove_tree(&data->db, to);
+    status = store_delta(data, to, temporary);
+    unlink(temporary);
+    if (status == 0) {
+	if (data->upper_source != NULL)
+	    status = source_unlink(data, from);
+	if (status == 0)
+	    status = overlay_commit(data);
+    }
+    return status;
+}
+
 static int overlay_rename(NetfsMount *mount, const char *from, const char *to)
 {
     OverlayData *data = overlay_data(mount);
@@ -1222,6 +1293,15 @@ static int overlay_rename(NetfsMount *mount, const char *from, const char *to)
 	return -ENAMETOOLONG;
     }
     source_in_lower = lstat(lower_from, &(struct stat){ 0 }) == 0;
+
+    if (data->db.mode == OVERLAY_MODE_BLOCK) {
+	status = rename_as_delta(data, from, to, upper_from, lower_from,
+				 source_in_lower);
+	if (status != -ENOTSUP) {
+	    pthread_mutex_unlock(&data->lock);
+	    return status;
+	}
+    }
 
     (void) remove_upper_tree(upper_to);
     overlay_entry_remove_tree(&data->db, to);
