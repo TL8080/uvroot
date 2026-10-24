@@ -989,16 +989,10 @@ script::
 Downloads
 =========
 
-uvroot
------
-
-The source code for uvroot and CARE are hosted in the same repository on `GitHub <https://github.com/proot-me/proot>`_.
-Previous uvroot releases were packaged at https://github.com/proot-me/proot-static-build/releases, however, that
-repository has since been archived. The latest builds can be found under the job artifacts for the `GitLab CI/CD Pipelines <https://gitlab.com/proot/proot/pipelines>`_ for each commit. The following commands can be used to download the latest x86_64 binary for convenience::
-
-    curl -LO https://proot.gitlab.io/proot/bin/proot
-    chmod +x ./uvroot
-    uvroot --version
+uvroot has no published binary releases, no distribution packages and no
+entry in any distribution repository.  Build it from this source tree; the
+:code:`README` describes the dependencies and the build steps.
+:code:`uvroot --version` reports the build commit.
 
 Rootfs
 ------
@@ -1026,122 +1020,6 @@ following command on the expected Linux distribution::
     tar --one-file-system --create --gzip --file my_rootfs.tar.gz /
 
 
-Ecosystem
-=========
-
-The following ecosystem has developed around uvroot since it has been
-made publicly available.
-
-Projects using uvroot or CARE
-----------------------------
-
-* `ATOS
-  <http://compilfr.ens-lyon.fr/wp-content/uploads/2013/12/17-Francois_DeFerriere.pdf>`_:
-  find automatically C/C++ compiler options that provide best
-  optimizations.
-
-* CARE_: archive material used during an execution to make it
-  reproducible on any Linux system.
-
-* `[OUTDATED] Debian noroot
-  <https://play.google.com/store/apps/details?id=com.cuntubuntu>`_:
-  use Debian Linux on Android without root access.
-
-* `[OUTDATED] GNURoot
-  <https://github.com/corbinlc/GNURootDebian>`_:
-  use several Linux distros on Android without root access.
-
-* `JuNest <https://github.com/fsquillace/junest>`_:
-  use Arch Linux on any Linux distros without root access.
-
-* `[OUTDATED] OPAM2Debian <https://github.com/gildor478/opam2debian>`_:
-  create Debian packages which contains a fully compiled OPAM
-  installation.
-
-* `OpenMOLE <https://github.com/openmole/openmole>`_:
-  execute programs on distributed computing environments.
-
-* `[OUTDATED] Polysquare Travis Container
-  <https://github.com/polysquare/polysquare-travis-container>`_:
-  use several Linux distros on Travis-CI without root access.
-
-* `[OUTDATED] Portable PyPy <https://github.com/squeaky-pl/portable-pypy>`_:
-  portable 32 and 64 bit x86 PyPy binaries.
-
-* `SIO Workers <http://sioworkers.readthedocs.org/en/latest>`_:
-  batch long-term computations with Python.
-
-
-Third party packages
---------------------
-
-Binaries from the Downloads_ section are likely more up-to-date.
-
-* `Alpine Linux <https://pkgs.alpinelinux.org/packages?name=uvroot>`_
-
-* `Arch Linux <https://aur.archlinux.org/packages/uvroot>`_
-
-* `Debian <https://packages.debian.org/sid/uvroot>`_
-
-* `Gentoo <http://packages.gentoo.org/package/sys-apps/uvroot>`_
-
-* `NixOS <https://mynixos.com/nixpkgs/package/uvroot>`_
-
-* `Termux <https://wiki.termux.com/wiki/uvroot>`_
-
-* `Ubuntu <https://launchpad.net/ubuntu/+source/uvroot>`_
-
-* `University of Chicago RCC <https://rcc.uchicago.edu/docs/software/modules/uvroot/midway2/current.html>`_
-
-* `Void Linux <https://github.com/void-linux/void-packages/tree/master/srcpkgs/uvroot>`_
-
-
-Public material about uvroot or CARE
------------------------------------
-
-* articles on `Rémi's blog
-  <https://blog.duraffort.fr/tag/uvroot.html>`_.  Rémi (a.k.a Ivoire)
-  is one of the uvroot developers.
-
-* presentation "`Software engineering tools based on syscall
-  instrumentation
-  <https://archive.fosdem.org/2014/schedule/event/syscall>`_" during
-  FOSDEM 2014.
-
-* presentation "`SW testing & Reproducing a LAVA failures locally
-  using CARE <https://connect.linaro.org/resources/lcu14/lcu14-211-lava-use-cases-sw-testing-reproducing-a-lava-failures-locally-using-care>`_"
-  during Linaro Connect USA 2014
-
-* presentation and essay "`CARE: the Comprehensive Archiver for
-  Reproducible Execution
-  <http://c-mind.org/events/trust2014/presentations/trust14_care.pdf>`_"
-  (`essay <http://dl.acm.org/citation.cfm?doid=2618137.2618138>`_)
-  during TRUST 2014
-
-* presentation "`An Introduction to the CARE tool (dead link)
-  <#>`_"
-  during HiPEAC CSW 2013
-
-* presentation and essay "`uvroot: a Step Forward for QEMU User-Mode
-  <http://adt.cs.upb.de/quf/quf11/quf2011_13.pdf>`_" (`proceedings
-  <http://adt.cs.upb.de/quf/quf2011_proceedings.pdf>`_) during
-  QUF'11
-
-* tutorial "`How to install nix in home (on another distribution)
-  <https://wiki.nixos.org/wiki/Nix_Installation_Guide#uvroot>`_"
-
-
-Companies using uvroot or CARE internally
-----------------------------------------
-
-* STMicroelectronics
-* Sony
-* Ericsson
-* Cisco
-* Gogo
-* Infinite Omicron, LLC.
-
-
 See Also
 ========
 
@@ -1152,7 +1030,9 @@ bindfs(1), fakeroot(1), fakechroot(1)
 Colophon
 ========
 
-Visit https://proot-me.github.io for help, bug reports, suggestions, patches, ...
+This fork is derived from PRoot; the current source tree is the authoritative
+place for help, bug reports and patches.  No uvroot website, binary release
+channel or distribution package is published yet.
 Copyright (C) 2023 uvroot Developers, licensed under GPL v2 or later.
 
 ::

@@ -9,7 +9,7 @@ The format is based on `Keep a Changelog`_, and this project adheres to
 Unreleased
 ----------
 
-Please see `Unreleased Changes`_ for more information.
+Changes that have not been released are listed below.
 
 Added
 ~~~~~
@@ -440,6 +440,5 @@ Fixed
 
 -  Non-executable stack for binaries.
 
-.. _Unreleased Changes: https://github.com/proot-me/proot/compare/v5.4.0...master
 .. _Keep a Changelog: https://keepachangelog.com/en/1.0.0
 .. _Semantic Versioning: https://semver.org/spec/v2.0.0.html

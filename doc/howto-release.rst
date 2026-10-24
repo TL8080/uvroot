@@ -1,5 +1,11 @@
 How to make a release of uvroot?
-===============================
+================================
+
+.. note::
+
+   No uvroot or CARE release has been published, and no distribution
+   package exists.  This document is a checklist for a future release,
+   not a description of an active release channel.
 
 This document summarizes checks that must be performed before
 releasing uvroot or CARE, and the steps to actually publish a release.
@@ -101,9 +107,6 @@ Once the version-bump PR is merged to :code:`master`:
 Website
 -------
 
-Regenerating the documentation website is separate from the binary
-release above::
-
-    make -C doc
-    SITE_DIR=../../proot-me.github.io
-    make -eC doc dist # relative to doc directory
+No uvroot documentation website is published.  The upstream PRoot
+``proot-me.github.io`` checkout must not be used as a deployment target
+for this fork.

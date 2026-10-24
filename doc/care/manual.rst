@@ -433,15 +433,15 @@ example::
 Downloads
 =========
 
-CARE is heavily based on uvroot_, that's why they are both hosted in
-the same repository: https://github.com/proot-me/proot. Previous CARE releases were packaged at https://github.com/proot-me/proot-static-build/releases, however, that repository has since been archived. The latest builds can be found under the job artifacts for the `GitLab CI/CD Pipelines <https://gitlab.com/proot/proot/pipelines>`_ for each commit.
-
-.. _uvroot: https://proot-me.github.io
+CARE is built from this source tree.  No CARE binary release or
+distribution package is published.
 
 Colophon
 ========
 
-Visit https://proot-me.github.io/care for help, bug reports, suggestions, patches, ...
+The current source tree is the authoritative place for help, bug reports,
+suggestions and patches.  No CARE website or distribution package is
+published.
 Copyright (C) 2023 uvroot Developers, licensed under GPL v2 or later.
 
 ::
