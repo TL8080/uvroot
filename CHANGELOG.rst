@@ -128,6 +128,30 @@ Fixed
   Illegal block number`` followed by an inconsistent bitmap).
 - ``link(2)`` on a ``netfs`` block image now reports ``EEXIST`` when the
   destination already exists instead of appending a duplicate entry.
+- Removing one name of a hard-linked file on a ``netfs`` block image only
+  drops that link now.  The inode and its blocks were released even when
+  other names still referenced them, which left an inode marked free but
+  referenced and put live blocks on the free list (``e2fsck`` reported
+  both bitmap differences).
+- ``vperm`` keeps owner access on the host inode of a newly created file
+  or directory while still storing the virtual mode.  ``dpkg`` creates
+  directories with mode 0 and applies the real mode through
+  ``chmod(2)``, which ``vperm`` only records; because the host inode
+  stayed mode 0, the next ``stat(2)`` failed with ``EACCES`` and
+  ``apt-get install`` aborted with "unable to stat ... Permission
+  denied".
+- ``vperm`` no longer records a directory, symlink or hard link as a
+  regular file: the object type comes from ``lstat(2)``, a new symlink
+  is recorded as ``S_IFLNK | 0777``, a hard link inherits the source's
+  virtual owner and mode, and ``chmod``/``chown`` on a fresh path keep
+  the host object's type.
+- ``chown(2)``/``chgrp(2)`` with an unspecified id (``-1``) on a
+  ``vperm`` path now preserves the recorded owner or group instead of
+  storing uid/gid 4294967295.
+- Renaming over an existing destination on a ``vperm`` path drops the
+  destination's recorded metadata before moving the source entries, so
+  the moved object no longer inherits stale ownership and duplicate
+  database entries are not created.
 
 5.4.1 - 2026-09-07
 ------------------

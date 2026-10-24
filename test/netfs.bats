@@ -166,6 +166,41 @@ wait_for_port() {
     [ "$status" -eq 0 ]
 }
 
+@test "netfs keeps a hard-linked inode when one name is removed" {
+    check_if_command_exists qemu-img
+    check_if_command_exists mke2fs
+    check_if_command_exists debugfs
+    check_if_command_exists e2fsck
+
+    local raw="$NETFS_TMP/hardlink.raw"
+    local image="$NETFS_TMP/hardlink.qcow2"
+    local check="$NETFS_TMP/hardlink-check.raw"
+
+    dd if=/dev/zero of="$raw" bs=1M count=16 status=none
+    mke2fs -q -t ext4 -F "$raw"
+    qemu-img convert -f raw -O qcow2 "$raw" "$image"
+
+    # Removing one name of a hard-linked file must only drop that link.
+    # Releasing the still-referenced inode used to leave an inode marked
+    # free but referenced, with its data blocks already on the free list.
+    run uvroot -r / "--qcow2=$NETFS_MNT:$image" /bin/sh -c \
+        "echo DATA > '$NETFS_MNT/orig' &&
+         ln '$NETFS_MNT/orig' '$NETFS_MNT/alias' &&
+         rm '$NETFS_MNT/orig' &&
+         cat '$NETFS_MNT/alias' >/dev/null &&
+         mv '$NETFS_MNT/alias' '$NETFS_MNT/renamed'"
+    [ "$status" -eq 0 ]
+
+    qemu-img convert -f qcow2 -O raw "$image" "$check"
+
+    run debugfs -R 'cat /renamed' "$check"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"DATA"* ]]
+
+    run e2fsck -fn "$check"
+    [ "$status" -eq 0 ]
+}
+
 @test "netfs mounts an NBD export read-write" {
     check_if_command_exists qemu-nbd
     check_if_command_exists mke2fs

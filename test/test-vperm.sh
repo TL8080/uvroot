@@ -62,6 +62,47 @@ ok "sticky owner kept"     "$(vp /usr/bin/stat -c %u:%g /data.txt)" "1234:5678"
 ok "mode from creation"    "$(vp /usr/bin/stat -c %a /data.txt)" "666"
 ok "entry refreshed"       "$(grep -P '\tdata\.txt$' "$R/.uvroot-vperm" | awk '{print $1, $2, $3}')" "100666 1234 5678"
 
+echo "== chown(-1) keeps the unspecified id =="
+printf 'id\n' > "$R/ids.txt"
+vp /bin/sh -c 'chown 1234:5678 /ids.txt; chgrp 42 /ids.txt' >/dev/null
+ok "chgrp keeps owner" "$(vp /usr/bin/stat -c %u:%g /ids.txt)" "1234:42"
+vp /bin/sh -c 'chown 99 /ids.txt' >/dev/null
+ok "chown keeps group" "$(vp /usr/bin/stat -c %u:%g /ids.txt)" "99:42"
+
+echo "== object type and host access after creation =="
+mkdir -p "$R/typed"
+vp /bin/chmod 700 /typed >/dev/null
+ok "chmod keeps directory type" \
+    "$(vp /bin/sh -c 'test -d /typed && echo dir || echo other')" "dir"
+
+vp_root() { "$UVROOT" -r "$R" $BINDS --vperm --vperm-id=0:0 "$@" 2>/dev/null; }
+vp_root /bin/mkdir -m 000 /tight >/dev/null
+vp_root /bin/chmod 700 /tight >/dev/null
+ok "restrictive mkdir stays usable" \
+    "$(vp_root /bin/sh -c 'echo x > /tight/f && cat /tight/f')" "x"
+
+vp_root /bin/ln -s target /symlink >/dev/null
+ok "symlink type"  "$(vp_root /bin/sh -c 'test -L /symlink && echo link || echo other')" "link"
+ok "symlink owner" "$(vp_root /usr/bin/stat -c %u:%g /symlink)" "0:0"
+ok "symlink mode"  "$(vp_root /usr/bin/stat -c %a /symlink)" "777"
+
+vp_root /bin/sh -c 'echo h > /h1; chown 1234:5678 /h1; chmod 640 /h1;
+                    ln /h1 /h2' >/dev/null
+ok "hard link shares owner" "$(vp_root /usr/bin/stat -c %u:%g /h2)" "1234:5678"
+ok "hard link shares mode"  "$(vp_root /usr/bin/stat -c %a /h2)" "640"
+
+echo "== rename replaces the destination metadata =="
+vp_root /bin/sh -c 'echo A > /r1; echo B > /r2; chown 1111:1111 /r1;
+                    chown 2222:2222 /r2; mv /r2 /r1' >/dev/null
+ok "source metadata wins" "$(vp_root /usr/bin/stat -c %u /r1)" "2222"
+ok "one entry for destination" "$(grep -c -P '\tr1$' "$R/.uvroot-vperm")" "1"
+
+printf 'plain\n' > "$R/pass"
+vp_root /bin/sh -c 'echo victim > /victim; chown 1234:1234 /victim;
+                    mv /pass /victim' >/dev/null
+ok "untracked source drops destination entry" \
+    "$(vp_root /usr/bin/stat -c %u /victim)" "$(id -u)"
+
 echo "== damaged database stops uvroot =="
 cp "$R/.uvroot-vperm" /tmp/vperm-test/keep.db
 printf 'this is not an entry\n' > "$R/.uvroot-vperm"

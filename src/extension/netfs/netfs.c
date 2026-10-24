@@ -2754,6 +2754,16 @@ static int handle_sysexit_end(Tracee *tracee, NetfsConfig *config)
 	if (replaced == node)
 	    replaced = NULL;
 
+	/*
+	 * rename(2) performs no action when both names already refer to
+	 * the same inode (two hard links to one file).  Keep both mirror
+	 * entries: dropping the destination here would make a name that
+	 * still exists in the image disappear from the cache tree.
+	 */
+	if (replaced != NULL && node->ino != 0
+	    && node->ino == replaced->ino)
+	    break;
+
 	{
 	    const NetfsDirOps *ops = dir_ops_of(old_mount);
 	    if (ops != NULL && ops->rename != NULL)

@@ -1309,6 +1309,24 @@ static int ext2_unlink(NetfsMount *mount, const char *rel)
 	return -EIO;
 
     /*
+     * A file can have several names.  Removing one only drops a link:
+     * the inode and its data blocks still belong to the other names.
+     * Releasing them here used to turn every unlink of a hard-linked
+     * file into an inode that stayed referenced but was marked free,
+     * which e2fsck reports as a bitmap difference and deleted-inode
+     * reference.
+     */
+    if (inode.i_links_count > 1) {
+	inode.i_links_count--;
+	inode.i_ctime = (__u32) time(NULL);
+	(void) ext2_api.write_inode(data->fs, ino, &inode);
+
+	ext2_touch_parent(mount, rel);
+	(void) ext2_api.flush(data->fs);
+	return 0;
+    }
+
+    /*
      * Release the data blocks, then the inode itself.  A fast symlink
      * keeps its target in the inode's own block array, so running the
      * regular-file truncation on it reads that text as block numbers
@@ -1325,8 +1343,7 @@ static int ext2_unlink(NetfsMount *mount, const char *rel)
 	}
     }
 
-    if (inode.i_links_count > 0)
-	inode.i_links_count--;
+    inode.i_links_count = 0;
     inode.i_dtime = (__u32) time(NULL);
     (void) ext2_api.write_inode(data->fs, ino, &inode);
 

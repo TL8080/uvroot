@@ -154,6 +154,12 @@ typedef struct VpermTracee {
     gid_t move_gid;
     bool move_valid;
 
+    /* Virtual metadata of a hard-link source, carried to the new name.  */
+    mode_t link_mode;
+    uid_t link_uid;
+    gid_t link_gid;
+    bool link_valid;
+
     /* Current virtual identity of this process; changed by the
      * setuid/setgid family and inherited across fork/exec.  */
     uid_t uid;
@@ -323,6 +329,51 @@ static VpermEntry *entry_get(VpermRoot *root, const char *rel, bool create)
 }
 
 /*
+ * Drop every entry at, or below, @prefix.  rename(2) replaces the
+ * destination object, so its recorded metadata must not be inherited by
+ * the object that is moved there.
+ */
+static void entry_remove_tree(VpermRoot *root, const char *prefix)
+{
+    size_t length = strlen(prefix);
+    VpermEntry **link = &root->entries;
+
+    while (*link != NULL) {
+	VpermEntry *entry = *link;
+
+	if (strcmp(entry->path, prefix) == 0
+	    || (strncmp(entry->path, prefix, length) == 0
+		&& entry->path[length] == '/')) {
+	    *link = entry->next;
+	    talloc_free(entry);
+	    continue;
+	}
+	link = &entry->next;
+    }
+}
+
+/* Keep only the first entry for each path.  */
+static void entry_drop_duplicates(VpermRoot *root)
+{
+    VpermEntry *entry;
+
+    for (entry = root->entries; entry != NULL; entry = entry->next) {
+	VpermEntry **link = &entry->next;
+
+	while (*link != NULL) {
+	    VpermEntry *candidate = *link;
+
+	    if (strcmp(candidate->path, entry->path) == 0) {
+		*link = candidate->next;
+		talloc_free(candidate);
+		continue;
+	    }
+	    link = &candidate->next;
+	}
+    }
+}
+
+/*
  * Rewrite every entry below @old_prefix so a renamed directory keeps the
  * metadata of its whole subtree.
  */
@@ -353,6 +404,8 @@ static void entry_move_tree(VpermRoot *root, const char *old_prefix,
 	    entry->path = replacement;
 	}
     }
+
+    entry_drop_duplicates(root);
 }
 
 /* Every ancestor directory of @rel that has an entry must grant x.  */
@@ -1590,9 +1643,17 @@ static void remember_change(VpermRoot *root, const char *rel, mode_t mode,
 	struct stat st;
 
 	snprintf(full, sizeof(full), "%s/%s", root->host, rel);
-	if (stat(full, &st) == 0) {
-	    if (!have_mode)
-		entry->mode = st.st_mode;
+	if (lstat(full, &st) == 0) {
+	    /*
+	     * Always take the type from the host object itself, never
+	     * from a symlink target: fchownat/fchmodat2 with
+	     * AT_SYMLINK_NOFOLLOW create entries for the link, and a
+	     * followed stat used to record the target's regular-file
+	     * type for it.  The mode below only replaces the permission
+	     * bits; starting from zero would likewise make a chmod on a
+	     * directory look like a regular file.
+	     */
+	    entry->mode = st.st_mode;
 	    if (!have_uid)
 		entry->uid = st.st_uid;
 	    if (!have_gid)
@@ -1616,30 +1677,68 @@ static void remember_change(VpermRoot *root, const char *rel, mode_t mode,
 }
 
 /*
- * A path was removed but its entry was kept, and is now being created
- * again (symlink, hard link): the recorded virtual owner and permission
- * bits stay, only the object type has to follow what was created.
- * @type is 0 to take it from the object at @host.
+ * A newly created symlink has no useful permission bits of its own (the
+ * kernel reports 0777 and ignores chmod), and it must not be recorded as
+ * the regular file a preceding fchownat()/fchmodat2() may have created
+ * an entry for.  A fresh entry takes the creator's virtual identity; a
+ * sticky entry keeps the owner it recorded before the path disappeared.
  */
-static void refresh_entry_type(VpermTracee *state, mode_t type,
-			       const char *host)
+static void record_symlink(VpermTracee *state)
 {
     VpermEntry *entry = entry_find(state->pend_root, state->pend_rel);
 
+    if (entry == NULL) {
+	entry = entry_get(state->pend_root, state->pend_rel, true);
+	if (entry == NULL)
+	    return;
+	entry->uid = state->uid;
+	entry->gid = state->gid;
+    }
+
+    entry->mode = S_IFLNK | 0777;
+    (void) db_save(state->pend_root);
+}
+
+/*
+ * A hard link is another name for the source inode, so the new path must
+ * expose the source's virtual metadata.  Without this the two names of
+ * one file report different owners and modes (the new name fell back to
+ * the host inode).  When the source has no entry the destination is a
+ * pass-through path as well; a stale entry for it must be dropped.
+ */
+static void record_hard_link(VpermTracee *state)
+{
+    VpermEntry *entry;
+
+    if (!state->link_valid) {
+	entry_remove_tree(state->pend_root, state->pend_rel);
+	(void) db_save(state->pend_root);
+	return;
+    }
+
+    entry = entry_get(state->pend_root, state->pend_rel, true);
     if (entry == NULL)
 	return;
 
-    if (type == 0 && host != NULL) {
-	struct stat st;
-
-	if (lstat(host, &st) == 0)
-	    type = st.st_mode & S_IFMT;
-    }
-
-    if (type != 0)
-	entry->mode = (entry->mode & 07777) | type;
-
+    entry->mode = state->link_mode;
+    entry->uid = state->link_uid;
+    entry->gid = state->link_gid;
     (void) db_save(state->pend_root);
+}
+
+/*
+ * The guest always runs as the host user and vperm applies the virtual
+ * mode itself.  A newly created inode may therefore be too restrictive
+ * for the kernel: dpkg, for instance, creates directories with mode 0
+ * and chmods them afterwards (a chmod vperm only records), so the next
+ * stat(2) would fail with EACCES before vperm is even consulted.  Keep
+ * owner access on the host inode and let the virtual mode decide what
+ * the guest is allowed to do.
+ */
+static void ensure_host_access(const char *host)
+{
+    if (host != NULL && host[0] != '\0')
+	(void) chmod(host, S_IRWXU);
 }
 
 /* ------------------------------------------------------------------ */
@@ -1659,6 +1758,7 @@ static int handle_enter_start(Tracee *tracee, VpermConfig *config)
     state->pend_absent = false;
     state->pend_new_valid = false;
     state->move_valid = false;
+    state->link_valid = false;
     state->last_valid = false;
     state->pend_protected = false;
     state->pend_fs_backed = false;
@@ -2209,18 +2309,15 @@ static int handle_enter_end(Tracee *tracee, VpermConfig *config,
     case PR_chown:
     case PR_chown32:
     case PR_lchown:
-    case PR_lchown32:
+    case PR_lchown32:{
+	uid_t uid = (uid_t) peek_reg(tracee, ORIGINAL, SYSARG_2);
+	gid_t gid = (gid_t) peek_reg(tracee, ORIGINAL, SYSARG_3);
+
 	if (capture_path(tracee, config, state, SYSARG_1) < 0)
 	    return -EACCES;
-	if (vperm_fs_check_chown(tracee, state,
-				 (uid_t) peek_reg(tracee, ORIGINAL, SYSARG_2),
-				 (gid_t) peek_reg(tracee, ORIGINAL,
-						  SYSARG_3)) < 0)
+	if (vperm_fs_check_chown(tracee, state, uid, gid) < 0)
 	    return -EPERM;
-	if (vperm_delegate_chown(tracee, state,
-				 (uid_t) peek_reg(tracee, ORIGINAL, SYSARG_2),
-				 (gid_t) peek_reg(tracee, ORIGINAL,
-						  SYSARG_3)) > 0) {
+	if (vperm_delegate_chown(tracee, state, uid, gid) > 0) {
 	    set_sysnum(tracee, PR_void);
 	    state->emulate = true;
 	    break;
@@ -2229,25 +2326,23 @@ static int handle_enter_end(Tracee *tracee, VpermConfig *config,
 	    return -EPERM;
 	if (state->pend_valid) {
 	    remember_change(state->pend_root, state->pend_rel, 0, false,
-			    peek_reg(tracee, ORIGINAL, SYSARG_2), true,
-			    peek_reg(tracee, ORIGINAL, SYSARG_3), true);
+			    uid, uid != (uid_t) -1, gid,
+			    gid != (gid_t) -1);
 	    set_sysnum(tracee, PR_void);
 	    state->emulate = true;
 	}
 	break;
+    }
 
     case PR_fchown:
-    case PR_fchown32:
+    case PR_fchown32:{
+	uid_t uid = (uid_t) peek_reg(tracee, ORIGINAL, SYSARG_2);
+	gid_t gid = (gid_t) peek_reg(tracee, ORIGINAL, SYSARG_3);
+
 	capture_fd(tracee, config, state, SYSARG_1);
-	if (vperm_fs_check_chown(tracee, state,
-				 (uid_t) peek_reg(tracee, ORIGINAL, SYSARG_2),
-				 (gid_t) peek_reg(tracee, ORIGINAL,
-						  SYSARG_3)) < 0)
+	if (vperm_fs_check_chown(tracee, state, uid, gid) < 0)
 	    return -EPERM;
-	if (vperm_delegate_chown(tracee, state,
-				 (uid_t) peek_reg(tracee, ORIGINAL, SYSARG_2),
-				 (gid_t) peek_reg(tracee, ORIGINAL,
-						  SYSARG_3)) > 0) {
+	if (vperm_delegate_chown(tracee, state, uid, gid) > 0) {
 	    set_sysnum(tracee, PR_void);
 	    state->emulate = true;
 	    break;
@@ -2256,25 +2351,23 @@ static int handle_enter_end(Tracee *tracee, VpermConfig *config,
 	    return -EPERM;
 	if (state->pend_valid) {
 	    remember_change(state->pend_root, state->pend_rel, 0, false,
-			    peek_reg(tracee, ORIGINAL, SYSARG_2), true,
-			    peek_reg(tracee, ORIGINAL, SYSARG_3), true);
+			    uid, uid != (uid_t) -1, gid,
+			    gid != (gid_t) -1);
 	    set_sysnum(tracee, PR_void);
 	    state->emulate = true;
 	}
 	break;
+    }
 
-    case PR_fchownat:
+    case PR_fchownat:{
+	uid_t uid = (uid_t) peek_reg(tracee, ORIGINAL, SYSARG_3);
+	gid_t gid = (gid_t) peek_reg(tracee, ORIGINAL, SYSARG_4);
+
 	if (capture_path(tracee, config, state, SYSARG_2) < 0)
 	    return -EACCES;
-	if (vperm_fs_check_chown(tracee, state,
-				 (uid_t) peek_reg(tracee, ORIGINAL, SYSARG_3),
-				 (gid_t) peek_reg(tracee, ORIGINAL,
-						  SYSARG_4)) < 0)
+	if (vperm_fs_check_chown(tracee, state, uid, gid) < 0)
 	    return -EPERM;
-	if (vperm_delegate_chown(tracee, state,
-				 (uid_t) peek_reg(tracee, ORIGINAL, SYSARG_3),
-				 (gid_t) peek_reg(tracee, ORIGINAL,
-						  SYSARG_4)) > 0) {
+	if (vperm_delegate_chown(tracee, state, uid, gid) > 0) {
 	    set_sysnum(tracee, PR_void);
 	    state->emulate = true;
 	    break;
@@ -2283,12 +2376,13 @@ static int handle_enter_end(Tracee *tracee, VpermConfig *config,
 	    return -EPERM;
 	if (state->pend_valid) {
 	    remember_change(state->pend_root, state->pend_rel, 0, false,
-			    peek_reg(tracee, ORIGINAL, SYSARG_3), true,
-			    peek_reg(tracee, ORIGINAL, SYSARG_4), true);
+			    uid, uid != (uid_t) -1, gid,
+			    gid != (gid_t) -1);
 	    set_sysnum(tracee, PR_void);
 	    state->emulate = true;
 	}
 	break;
+    }
 
     /* Statistics: remember which path was queried.  */
     case PR_stat:
@@ -2513,6 +2607,19 @@ static int handle_enter_end(Tracee *tracee, VpermConfig *config,
 	break;
 
     case PR_link:
+	if (capture_path(tracee, config, state, SYSARG_1) < 0)
+	    return -EACCES;
+	if (state->pend_valid && state->pend_root != NULL) {
+	    VpermEntry *source =
+		entry_find(state->pend_root, state->pend_rel);
+
+	    if (source != NULL) {
+		state->link_valid = true;
+		state->link_mode = source->mode;
+		state->link_uid = source->uid;
+		state->link_gid = source->gid;
+	    }
+	}
 	if (capture_path(tracee, config, state, SYSARG_2) < 0)
 	    return -EACCES;
 	if (!state->pend_valid) {
@@ -2525,6 +2632,19 @@ static int handle_enter_end(Tracee *tracee, VpermConfig *config,
 	break;
 
     case PR_linkat:
+	if (capture_path(tracee, config, state, SYSARG_2) < 0)
+	    return -EACCES;
+	if (state->pend_valid && state->pend_root != NULL) {
+	    VpermEntry *source =
+		entry_find(state->pend_root, state->pend_rel);
+
+	    if (source != NULL) {
+		state->link_valid = true;
+		state->link_mode = source->mode;
+		state->link_uid = source->uid;
+		state->link_gid = source->gid;
+	    }
+	}
 	if (capture_path(tracee, config, state, SYSARG_4) < 0)
 	    return -EACCES;
 	if (!state->pend_valid) {
@@ -2959,7 +3079,16 @@ static int handle_exit_end(Tracee *tracee, VpermConfig *config)
 	 * subtree had once the rename succeeded.
 	 */
 	if ((int) result == 0 && state->pend_valid && state->pend_new_valid
-	    && state->pend_root == state->pend_new_root) {
+	    && state->pend_root == state->pend_new_root
+	    && strcmp(state->pend_rel, state->pend_new_rel) != 0) {
+	    /*
+	     * rename(2) replaces the destination object, so any entry
+	     * recorded for it describes a path that no longer exists.
+	     * Drop the destination subtree before moving the source
+	     * entries there, otherwise the moved object would inherit
+	     * stale metadata (and the two entries would coexist).
+	     */
+	    entry_remove_tree(state->pend_root, state->pend_new_rel);
 	    entry_move_tree(state->pend_root, state->pend_rel,
 			    state->pend_new_rel);
 	    (void) db_save(state->pend_root);
@@ -2983,8 +3112,10 @@ static int handle_exit_end(Tracee *tracee, VpermConfig *config)
 	    : peek_reg(tracee, ORIGINAL, SYSARG_3);
 
 	if ((int) result == 0) {
-	    VpermEntry *entry =
-		entry_find(state->pend_root, state->pend_rel);
+	    VpermEntry *entry;
+
+	    ensure_host_access(state->pend_host);
+	    entry = entry_find(state->pend_root, state->pend_rel);
 
 	    if (entry != NULL) {
 		/* The path already had an entry in a previous life:
@@ -3007,13 +3138,13 @@ static int handle_exit_end(Tracee *tracee, VpermConfig *config)
     case PR_symlink:
     case PR_symlinkat:
 	if ((int) result == 0)
-	    refresh_entry_type(state, S_IFLNK, NULL);
+	    record_symlink(state);
 	break;
 
     case PR_link:
     case PR_linkat:
 	if ((int) result == 0)
-	    refresh_entry_type(state, 0, state->pend_host);
+	    record_hard_link(state);
 	break;
 
     case PR_getdents:
@@ -3069,6 +3200,7 @@ static int handle_exit_end(Tracee *tracee, VpermConfig *config)
 	    word_t mode = peek_reg(tracee, ORIGINAL, mode_reg);
 
 	    if ((flags & O_CREAT) != 0 && state->pend_absent) {
+		ensure_host_access(state->pend_host);
 		if (entry != NULL) {
 		    /* The path was removed but its entry was kept:
 		     * keep the recorded virtual owner, take the
