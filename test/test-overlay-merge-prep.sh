@@ -11,12 +11,17 @@ set -u
 
 UVROOT="${UVROOT:-$(cd "$(dirname "$0")/.." && pwd)/src/uvroot}"
 HELPER="$(dirname "$UVROOT")/overlayctl"
-R="$(mktemp -d)"
+R="${TEST_DIR:-$(mktemp -d)}"
+KEEP="${KEEP:-0}"
 pass=0
 fail=0
 
 cleanup() {
-    rm -rf "$R"
+    if [ "$KEEP" = "1" ]; then
+        echo "TEST_DIR kept: $R"
+    else
+        rm -rf "$R"
+    fi
 }
 trap cleanup EXIT INT TERM
 
@@ -35,6 +40,12 @@ sha() {
 }
 
 mkdir -p "$R/upper" "$R/lower"
+
+echo "TEST_DIR=$R"
+echo "TYPE1_DIR=$R/upper"
+echo "TYPE2_DIR=$R/lower"
+echo "DB=$R/upper/.overlay"
+echo "EXPECTED=$R/expected"
 dd if=/dev/urandom of="$R/lower/data" bs=1024 count=64 status=none
 dd if=/dev/urandom of="$R/repl" bs=4096 count=1 status=none
 
