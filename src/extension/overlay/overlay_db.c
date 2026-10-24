@@ -381,6 +381,8 @@ int overlay_db_load(OverlayDb *db, const char *path)
 	    db->guest = xstrdup(decoded);
 	} else if (strncmp(line, "read_only ", 10) == 0) {
 	    db->read_only = strtoul(line + 10, NULL, 10) != 0;
+	} else if (strncmp(line, "upper_source ", 13) == 0) {
+	    db->upper_source = strtoul(line + 13, NULL, 10) != 0;
 	} else if (line[0] == 'D' || line[0] == 'B') {
 	    if (db_parse_entry(db, line) < 0)
 		goto malformed;
@@ -429,6 +431,7 @@ int overlay_db_save(OverlayDb *db)
 	fprintf(file, "lower %s\n", escaped);
     }
     fprintf(file, "read_only %d\n", db->read_only ? 1 : 0);
+    fprintf(file, "upper_source %d\n", db->upper_source ? 1 : 0);
 
     for (entry = db->entries; entry != NULL; entry = entry->next) {
 	char escaped[OVERLAY_PATH_MAX * 2];

@@ -164,6 +164,12 @@ static int merge_entry(OverlayDb *db, OverlayEntry *entry, bool verify,
 	fprintf(stderr, "bme: %s: read-only overlay\n", rel);
 	return -EROFS;
     }
+    if (db->upper_source) {
+	fprintf(stderr,
+		"bme: %s: type 1 is a source; run bme on a directory-backed "
+		"type 1\n", rel);
+	return -EOPNOTSUPP;
+    }
     if (!merge_allowed(db, rel)) {
 	fprintf(stderr, "bme: %s: permission denied\n", rel);
 	return -EPERM;
@@ -245,7 +251,8 @@ static int check_entry(OverlayDb *db, OverlayEntry *entry, const char *rel)
 	return 0;
     }
 
-    snprintf(temporary, sizeof(temporary), "%s/.bkc-check", db->upper);
+    snprintf(temporary, sizeof(temporary), "/tmp/.bkc-check.%ld",
+		 (long) getpid());
     unlink(temporary);
     status = overlay_delta_merge(db, entry, NULL, NULL, temporary);
     if (status < 0) {

@@ -490,6 +490,17 @@ Overlay
     ``.overlay`` database in the type 1 root, so the path stays hidden
     even though the read-only tree cannot be changed.
 
+    Either type may be an absolute host directory or a source URI:
+    ``img://``/``raw://``, ``qcow2://``, ``nbd+unix://``/``nbd://``,
+    ``iscsi://``, ``ftp://``, ``smb://``, ``nfs://`` and the other netfs
+    schemes.  A source is materialized into a private staging tree when
+    the container starts.  Type 2 is a read-only snapshot; type 1 changes
+    are pushed back to its source as they happen, so a raw/QCOW2/NBD
+    type 1 is updated in place.  Materializing a large image costs time
+    and disk space.  ``/dev/bme`` is refused for a source-backed type 1
+    because it cannot atomically update the source; ``/dev/bkc`` still
+    works.
+
     In block mode the database also records the logical size, mode,
     modified ranges and a SHA-256 of the merged content.  A read
     materializes the temporary merged file in the netfs cache; the
@@ -510,7 +521,8 @@ Overlay
     ::
 
         uvroot -r / --overlay=bind,/mnt/ovl,/tmp/upper,/tmp/lower /bin/sh
-        uvroot -r / --overlay=block,/mnt/ovl,/tmp/upper,/tmp/lower --vperm-id=0:0 /bin/sh
+        uvroot -r / --overlay=block,/mnt/ovl,/tmp/upper,qcow2:///tmp/base.qcow2 /bin/sh
+        uvroot -r / --overlay=block,/mnt/ovl,img:///tmp/upper.img,/tmp/lower /bin/sh
         /dev/bkc -r /mnt/ovl
         /dev/bme -h /mnt/ovl/path
 

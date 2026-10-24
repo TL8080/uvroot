@@ -40,7 +40,11 @@ Added
   mode, modified ranges and SHA-256 of the merged content.  ``/dev/bkc``
   and ``/dev/bme`` inspect and permanently merge deltas; merging is
   allowed for the virtual root or the file owner when ``--vperm`` is
-  enabled.
+  enabled.  Either layer may be a host directory or an
+  ``img://``/``qcow2://``/``nbd://``/``iscsi://``/network source URI:
+  the source is materialized into a staging tree, type 2 is a read-only
+  snapshot, and type 1 changes are pushed back to the source.  A
+  source-backed type 1 does not support ``/dev/bme`` yet.
 - Two containers can now use the same image at the same time without
   corrupting it.  The first process to open the image owns its
   filesystem driver and serves the others, which forward their directory

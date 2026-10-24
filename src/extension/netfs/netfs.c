@@ -3943,6 +3943,99 @@ static int mkdir_recursive_path(const char *path)
     return 0;
 }
 
+
+static int materialize_source_dir(NetfsMount *mount, const char *rel,
+				  const char *destination, TALLOC_CTX *ctx)
+{
+    const NetfsDirOps *ops = netfs_dir_ops_of(mount);
+    NetfsDirent *entries = NULL;
+    size_t count = 0;
+    size_t i;
+    int status;
+
+    if (ops == NULL || ops->list == NULL || ops->get == NULL)
+	return -ENOSYS;
+    status = ops->list(mount, rel, &entries, &count, ctx);
+    if (status < 0)
+	return status;
+
+    for (i = 0; i < count; i++) {
+	const NetfsDirent *entry = &entries[i];
+	char child_rel[PATH_MAX];
+	char child_dest[PATH_MAX];
+
+	if (strcmp(entry->name, ".") == 0
+	    || strcmp(entry->name, "..") == 0)
+	    continue;
+	if (rel[0] == '\0') {
+	    if (snprintf(child_rel, sizeof(child_rel), "%s", entry->name)
+		>= (int) sizeof(child_rel))
+		return -ENAMETOOLONG;
+	} else if (snprintf(child_rel, sizeof(child_rel), "%s/%s", rel,
+			    entry->name) >= (int) sizeof(child_rel)) {
+	    return -ENAMETOOLONG;
+	}
+	if (snprintf(child_dest, sizeof(child_dest), "%s/%s", destination,
+		     entry->name) >= (int) sizeof(child_dest))
+	    return -ENAMETOOLONG;
+
+	if (entry->is_dir) {
+	    if (mkdir(child_dest, (entry->mode & 07777) | 0700) < 0
+		&& errno != EEXIST)
+		return -errno;
+	    status = materialize_source_dir(mount, child_rel, child_dest, ctx);
+	    if (status < 0)
+		return status;
+	    (void) chmod(child_dest, entry->mode & 07777);
+	    continue;
+	}
+	if (entry->is_link) {
+	    if (entry->target == NULL)
+		return -EINVAL;
+	    if (symlink(entry->target, child_dest) < 0 && errno != EEXIST)
+		return -errno;
+	    continue;
+	}
+
+	/*
+	 * Remove a stale placeholder left by an earlier listing: the
+	 * backend's get() expects to create the destination itself.
+	 */
+	(void) unlink(child_dest);
+	status = ops->get(mount, child_rel, child_dest);
+	if (status < 0)
+	    return status;
+	(void) chmod(child_dest, entry->mode & 07777);
+    }
+    return 0;
+}
+
+int netfs_materialize_mount(NetfsMount *mount)
+{
+    TALLOC_CTX *ctx;
+    int status;
+
+    if (mount == NULL || mount->cache == NULL)
+	return -EINVAL;
+    ctx = talloc_new(NULL);
+    if (ctx == NULL)
+	return -ENOMEM;
+    status = materialize_source_dir(mount, "", mount->cache, ctx);
+    talloc_free(ctx);
+    return status;
+}
+
+static NetfsMount *find_mount_by_guest(NetfsConfig *config, const char *guest)
+{
+    NetfsMount *mount;
+
+    for (mount = config->mounts; mount != NULL; mount = mount->next) {
+	if (mount->guest != NULL && strcmp(mount->guest, guest) == 0)
+	    return mount;
+    }
+    return NULL;
+}
+
 int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
 {
     Extension *extension;
@@ -3963,6 +4056,7 @@ int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
     char helper[PATH_MAX];
     char resolved[PATH_MAX];
     const char *cache_root;
+    NetfsMount *upper_source = NULL;
     int status;
 
     if (spec == NULL || spec[0] == '\0') {
@@ -3994,9 +4088,12 @@ int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
 	     "overlay: mode must be \"bind\" or \"block\", not \"%s\"", mode);
 	return -1;
     }
-    if (guest[0] != '/' || upper_arg[0] != '/' || lower_arg[0] != '/') {
+    if (guest[0] != '/' || (strstr(upper_arg, "://") == NULL
+			    && upper_arg[0] != '/')
+	|| (strstr(lower_arg, "://") == NULL && lower_arg[0] != '/')) {
 	note(tracee, ERROR, USER,
-	     "overlay: guest, upper and lower paths must be absolute");
+	     "overlay: guest must be absolute; each type must be an "
+	     "absolute directory or a source URI");
 	return -1;
     }
 
@@ -4022,34 +4119,102 @@ int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
     if (snprintf(upper, sizeof(upper), "%s", upper_arg) >= (int) sizeof(upper)
 	|| snprintf(lower, sizeof(lower), "%s", lower_arg) >= (int) sizeof(lower))
 	return -1;
-    if (realpath(lower, resolved) == NULL) {
-	note(tracee, ERROR, USER, "overlay: lower \"%s\": %s", lower,
-	     strerror(errno));
-	return -1;
-    }
-    snprintf(lower, sizeof(lower), "%s", resolved);
-    {
-	struct stat st;
+    if (strstr(upper_arg, "://") != NULL) {
+	char source_spec[PATH_MAX * 2];
 
-	if (stat(lower, &st) < 0 || !S_ISDIR(st.st_mode)) {
+	if (snprintf(source_spec, sizeof(source_spec), "%s:%s",
+		     "/.uvroot-overlay/type1-src", upper_arg)
+	    >= (int) sizeof(source_spec))
+	    return -1;
+	status = netfs_add_mount(tracee, source_spec, NULL);
+	if (status < 0) {
 	    note(tracee, ERROR, USER,
-		 "overlay: lower \"%s\" is not a directory", lower);
+		 "overlay: cannot mount type 1 source \"%s\"", upper_arg);
 	    return -1;
 	}
+	upper_source = find_mount_by_guest(config,
+					   "/.uvroot-overlay/type1-src");
+	if (upper_source == NULL) {
+	    note(tracee, ERROR, INTERNAL,
+		 "overlay: type 1 source disappeared");
+	    return -1;
+	}
+	status = netfs_materialize_mount(upper_source);
+	if (status < 0) {
+	    note(tracee, ERROR, USER,
+		 "overlay: cannot snapshot type 1 source \"%s\": %s",
+		 upper_arg, strerror(-status));
+	    return -1;
+	}
+	upper_source->read_only = true;
+	snprintf(upper, sizeof(upper), "%s", upper_source->cache);
+    } else {
+	if (realpath(upper_arg, resolved) == NULL) {
+	    note(tracee, ERROR, USER, "overlay: upper \"%s\": %s",
+		 upper_arg, strerror(errno));
+	    return -1;
+	}
+	snprintf(upper, sizeof(upper), "%s", resolved);
+	status = mkdir_recursive_path(upper);
+	if (status < 0) {
+	    note(tracee, ERROR, USER,
+		 "overlay: cannot create upper \"%s\": %s", upper,
+		 strerror(-status));
+	    return -1;
+	}
+	if (realpath(upper, resolved) != NULL)
+	    snprintf(upper, sizeof(upper), "%s", resolved);
     }
-    status = mkdir_recursive_path(upper);
-    if (status < 0) {
-	note(tracee, ERROR, USER, "overlay: cannot create upper \"%s\": %s",
-	     upper, strerror(-status));
-	return -1;
-    }
-    if (realpath(upper, resolved) == NULL) {
-	note(tracee, ERROR, USER, "overlay: upper \"%s\": %s", upper,
-	     strerror(errno));
-	return -1;
-    }
-    snprintf(upper, sizeof(upper), "%s", resolved);
+    if (strstr(lower_arg, "://") != NULL) {
+	char source_spec[PATH_MAX * 2];
+	NetfsMount *source;
 
+	if (snprintf(source_spec, sizeof(source_spec), "%s:%s",
+		     "/.uvroot-overlay/lower", lower_arg)
+	    >= (int) sizeof(source_spec))
+	    return -1;
+	status = netfs_add_mount(tracee, source_spec, NULL);
+	if (status < 0) {
+	    note(tracee, ERROR, USER,
+		 "overlay: cannot mount type 2 source \"%s\"", lower_arg);
+	    return -1;
+	}
+	source = find_mount_by_guest(config, "/.uvroot-overlay/lower");
+	if (source == NULL) {
+	    note(tracee, ERROR, INTERNAL,
+		 "overlay: type 2 source disappeared");
+	    return -1;
+	}
+	/*
+	 * The hidden source mount is only an implementation detail; it
+	 * must never be writable by the guest.
+	 */
+	source->read_only = true;
+	status = netfs_materialize_mount(source);
+	if (status < 0) {
+	    note(tracee, ERROR, USER,
+		 "overlay: cannot snapshot type 2 source \"%s\": %s",
+		 lower_arg, strerror(-status));
+	    return -1;
+	}
+	snprintf(lower, sizeof(lower), "%s", source->cache);
+    } else {
+	if (realpath(lower, resolved) == NULL) {
+	    note(tracee, ERROR, USER, "overlay: lower \"%s\": %s", lower,
+		 strerror(errno));
+	    return -1;
+	}
+	snprintf(lower, sizeof(lower), "%s", resolved);
+	{
+	    struct stat st;
+
+	    if (stat(lower, &st) < 0 || !S_ISDIR(st.st_mode)) {
+		note(tracee, ERROR, USER,
+		     "overlay: lower \"%s\" is not a directory", lower);
+		return -1;
+	    }
+	}
+    }
     {
 	size_t upper_length = strlen(upper);
 	size_t lower_length = strlen(lower);
@@ -4102,7 +4267,8 @@ int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
     mount->root.materialized = true;
     mount->root.mount = mount;
 
-    status = netfs_overlay_init(mount, mode, upper, lower, guest);
+    status = netfs_overlay_init(mount, mode, upper, lower, guest,
+				    upper_source);
     if (status < 0) {
 	note(tracee, ERROR, USER, "overlay: cannot initialize \"%s\": %s",
 	     guest, strerror(-status));
@@ -4123,10 +4289,13 @@ int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
      * database.  They are ordinary bindings; the helper itself is the
      * same static binary as /dev/bkc and /dev/bme.
      */
-    if (new_binding(tracee, upper, "/.uvroot-overlay/upper", true) == NULL
-	|| new_binding(tracee, lower, "/.uvroot-overlay/lower", true) == NULL)
+    if (new_binding(tracee, upper, "/.uvroot-overlay/upper", true) == NULL)
 	note(tracee, WARNING, USER,
-	     "overlay: cannot expose the bkc/bme helper paths");
+	     "overlay: cannot expose the bkc/bme helper path for type 1");
+    if (strstr(lower_arg, "://") == NULL
+	&& new_binding(tracee, lower, "/.uvroot-overlay/lower", true) == NULL)
+	note(tracee, WARNING, USER,
+	     "overlay: cannot expose the bkc/bme helper path for type 2");
 
     {
 	ssize_t length = readlink("/proc/self/exe", helper,

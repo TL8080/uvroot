@@ -43,6 +43,7 @@ typedef struct OverlayDb {
     char *lower;		/* host absolute path */
     char *guest;		/* guest mount point */
     bool read_only;		/* merge commands must refuse writes */
+    bool upper_source;		/* type 1 is backed by a non-directory source */
     OverlayEntry *entries;
 } OverlayDb;
 

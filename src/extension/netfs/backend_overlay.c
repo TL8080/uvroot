@@ -27,6 +27,12 @@
 typedef struct OverlayData {
     OverlayDb db;
     pthread_mutex_t lock;
+
+    /* type 1 may be a raw/QCOW2/NBD/... source; local @db.upper is the
+     * materialized staging tree and these operations push each change
+     * back to that source.  */
+    NetfsMount *upper_source;
+    const NetfsDirOps *upper_ops;
 } OverlayData;
 
 static OverlayData *overlay_data(NetfsMount *mount)
@@ -97,6 +103,84 @@ static int ensure_parent(OverlayData *data, const char *rel)
 	cursor = slash + 1;
     }
     return 0;
+}
+
+
+static int source_put(OverlayData *data, const char *rel, const char *local)
+{
+    if (data->upper_source == NULL)
+	return 0;
+    if (data->upper_ops == NULL || data->upper_ops->put == NULL)
+	return -ENOSYS;
+    return data->upper_ops->put(data->upper_source, rel, local);
+}
+
+static int source_unlink(OverlayData *data, const char *rel)
+{
+    int status;
+
+    if (data->upper_source == NULL)
+	return 0;
+    if (data->upper_ops == NULL || data->upper_ops->unlink == NULL)
+	return -ENOSYS;
+    status = data->upper_ops->unlink(data->upper_source, rel);
+    return status == -ENOENT ? 0 : status;
+}
+
+static int source_mkdir(OverlayData *data, const char *rel)
+{
+    int status;
+
+    if (data->upper_source == NULL)
+	return 0;
+    if (data->upper_ops == NULL || data->upper_ops->mkdir == NULL)
+	return -ENOSYS;
+    status = data->upper_ops->mkdir(data->upper_source, rel);
+    return status == -EEXIST ? 0 : status;
+}
+
+static int source_rmdir(OverlayData *data, const char *rel)
+{
+    int status;
+
+    if (data->upper_source == NULL)
+	return 0;
+    if (data->upper_ops == NULL || data->upper_ops->rmdir == NULL)
+	return -ENOSYS;
+    status = data->upper_ops->rmdir(data->upper_source, rel);
+    return status == -ENOENT ? 0 : status;
+}
+
+static int source_symlink(OverlayData *data, const char *rel,
+			  const char *target)
+{
+    if (data->upper_source == NULL)
+	return 0;
+    if (data->upper_ops == NULL || data->upper_ops->symlink == NULL)
+	return -ENOSYS;
+    return data->upper_ops->symlink(data->upper_source, rel, target);
+}
+
+static int source_link(OverlayData *data, const char *from, const char *to)
+{
+    if (data->upper_source == NULL)
+	return 0;
+    if (data->upper_ops == NULL || data->upper_ops->link == NULL)
+	return -ENOSYS;
+    return data->upper_ops->link(data->upper_source, from, to);
+}
+
+/*
+ * Persist the local database and, for a non-directory type 1, push the
+ * very same database into the source filesystem.
+ */
+static int overlay_commit(OverlayData *data)
+{
+    int status = overlay_db_save(&data->db);
+
+    if (status < 0)
+	return status;
+    return source_put(data, OVERLAY_DB_NAME, data->db.path);
 }
 
 static int remove_upper_tree(const char *path)
@@ -430,7 +514,10 @@ static int store_full(OverlayData *data, const char *rel, const char *local)
     if (status < 0)
 	return status;
     overlay_entry_remove(&data->db, rel);
-    return overlay_db_save(&data->db);
+    status = overlay_commit(data);
+    if (status < 0)
+	return status;
+    return source_put(data, rel, upper);
 }
 
 static int store_delta(OverlayData *data, const char *rel, const char *local)
@@ -567,7 +654,10 @@ static int store_delta(OverlayData *data, const char *rel, const char *local)
 	unlink(temporary);
 	unlink(upper);
 	overlay_entry_remove(&data->db, rel);
-	return overlay_db_save(&data->db);
+	status = overlay_commit(data);
+	if (status < 0)
+	    return status;
+	return source_unlink(data, rel);
     }
 
     if (rename(temporary, upper) < 0) {
@@ -592,8 +682,10 @@ static int store_delta(OverlayData *data, const char *rel, const char *local)
 	if (overlay_hash_file(local, hash) == 0)
 	    snprintf(entry->hash, sizeof(entry->hash), "%s", hash);
     }
-    status = overlay_db_save(&data->db);
-    return status;
+    status = overlay_commit(data);
+    if (status < 0)
+	return status;
+    return source_put(data, rel, upper);
 
   out:
     if (in_local >= 0)
@@ -677,7 +769,9 @@ static int overlay_mkdir(NetfsMount *mount, const char *rel)
 	return status;
     }
     overlay_entry_remove(&data->db, rel);
-    status = overlay_db_save(&data->db);
+    status = overlay_commit(data);
+    if (status == 0)
+	status = source_mkdir(data, rel);
     pthread_mutex_unlock(&data->lock);
     return status;
 }
@@ -743,7 +837,9 @@ static int overlay_rmdir(NetfsMount *mount, const char *rel)
 	    entry->deleted = true;
     }
     if (status == 0)
-	status = overlay_db_save(&data->db);
+	status = overlay_commit(data);
+    if (status == 0)
+	status = source_rmdir(data, rel);
     pthread_mutex_unlock(&data->lock);
     return status;
 }
@@ -787,7 +883,9 @@ static int overlay_unlink(NetfsMount *mount, const char *rel)
 	    entry->deleted = true;
     }
     if (status == 0)
-	status = overlay_db_save(&data->db);
+	status = overlay_commit(data);
+    if (status == 0)
+	status = source_unlink(data, rel);
     pthread_mutex_unlock(&data->lock);
     return status;
 }
@@ -928,6 +1026,164 @@ static int copy_effective_tree(OverlayData *data, const char *from,
     return status;
 }
 
+
+static int source_delete_tree(OverlayData *data, const char *rel)
+{
+    struct stat st;
+    int status;
+
+    if (data->upper_ops == NULL || data->upper_ops->stat == NULL)
+	return -ENOSYS;
+    status = data->upper_ops->stat(data->upper_source, rel, &st);
+    if (status == -ENOENT)
+	return 0;
+    if (status < 0)
+	return status;
+    if (S_ISDIR(st.st_mode)) {
+	TALLOC_CTX *ctx = talloc_new(NULL);
+	NetfsDirent *entries = NULL;
+	size_t count = 0;
+	size_t i;
+
+	if (ctx == NULL)
+	    return -ENOMEM;
+	status = data->upper_ops->list(data->upper_source, rel, &entries,
+				       &count, ctx);
+	if (status < 0) {
+	    talloc_free(ctx);
+	    return status;
+	}
+	for (i = 0; i < count; i++) {
+	    char child[OVERLAY_PATH_MAX];
+
+	    if (strcmp(entries[i].name, ".") == 0
+		|| strcmp(entries[i].name, "..") == 0)
+		continue;
+	    if (rel[0] == '\0') {
+		if (snprintf(child, sizeof(child), "%s", entries[i].name)
+		    >= (int) sizeof(child)) {
+		    talloc_free(ctx);
+		    return -ENAMETOOLONG;
+		}
+	    } else if (snprintf(child, sizeof(child), "%s/%s", rel,
+				entries[i].name) >= (int) sizeof(child)) {
+		talloc_free(ctx);
+		return -ENAMETOOLONG;
+	    }
+	    status = source_delete_tree(data, child);
+	    if (status < 0) {
+		talloc_free(ctx);
+		return status;
+	    }
+	}
+	talloc_free(ctx);
+	return data->upper_ops->rmdir(data->upper_source, rel);
+    }
+    return data->upper_ops->unlink(data->upper_source, rel);
+}
+
+static int source_put_tree(OverlayData *data, const char *rel)
+{
+    char local[OVERLAY_PATH_MAX];
+    struct stat st;
+    int status;
+
+    if (overlay_join(local, sizeof(local), data->db.upper, rel) < 0)
+	return -ENAMETOOLONG;
+    if (lstat(local, &st) < 0)
+	return errno == ENOENT ? 0 : -errno;
+    if (S_ISDIR(st.st_mode)) {
+	DIR *dir;
+	struct dirent *item;
+
+	if (rel[0] != '\0') {
+	    status = source_mkdir(data, rel);
+	    if (status < 0)
+		return status;
+	}
+	dir = opendir(local);
+	if (dir == NULL)
+	    return -errno;
+	while ((item = readdir(dir)) != NULL) {
+	    char child[OVERLAY_PATH_MAX];
+
+	    if (strcmp(item->d_name, ".") == 0
+		|| strcmp(item->d_name, "..") == 0)
+		continue;
+	    if (rel[0] == '\0') {
+		if (snprintf(child, sizeof(child), "%s", item->d_name)
+		    >= (int) sizeof(child)) {
+		    closedir(dir);
+		    return -ENAMETOOLONG;
+		}
+	    } else if (snprintf(child, sizeof(child), "%s/%s", rel,
+				item->d_name) >= (int) sizeof(child)) {
+		closedir(dir);
+		return -ENAMETOOLONG;
+	    }
+	    status = source_put_tree(data, child);
+	    if (status < 0) {
+		closedir(dir);
+		return status;
+	    }
+	}
+	closedir(dir);
+	return 0;
+    }
+    if (S_ISLNK(st.st_mode)) {
+	char target[OVERLAY_PATH_MAX];
+	ssize_t got = readlink(local, target, sizeof(target) - 1);
+
+	if (got < 0)
+	    return -errno;
+	target[got] = '\0';
+	return source_symlink(data, rel, target);
+    }
+    return source_put(data, rel, local);
+}
+
+static int sync_upper_all(OverlayData *data)
+{
+    TALLOC_CTX *ctx;
+    NetfsDirent *entries = NULL;
+    size_t count = 0;
+    size_t i;
+    int status;
+
+    if (data->upper_source == NULL)
+	return 0;
+    if (data->upper_ops == NULL || data->upper_ops->list == NULL)
+	return -ENOSYS;
+    ctx = talloc_new(NULL);
+    if (ctx == NULL)
+	return -ENOMEM;
+    status = data->upper_ops->list(data->upper_source, "", &entries, &count,
+				   ctx);
+    if (status < 0) {
+	talloc_free(ctx);
+	return status;
+    }
+    for (i = 0; i < count; i++) {
+	char child[OVERLAY_PATH_MAX];
+
+	if (strcmp(entries[i].name, ".") == 0
+	    || strcmp(entries[i].name, "..") == 0)
+	    continue;
+	if (snprintf(child, sizeof(child), "%s", entries[i].name)
+	    >= (int) sizeof(child)) {
+	    talloc_free(ctx);
+	    return -ENAMETOOLONG;
+	}
+	status = source_delete_tree(data, child);
+	if (status < 0) {
+	    talloc_free(ctx);
+	    return status;
+	}
+    }
+    talloc_free(ctx);
+    return source_put_tree(data, "");
+}
+
 static int overlay_rename(NetfsMount *mount, const char *from, const char *to)
 {
     OverlayData *data = overlay_data(mount);
@@ -982,7 +1238,9 @@ static int overlay_rename(NetfsMount *mount, const char *from, const char *to)
 	if (entry != NULL)
 	    entry->deleted = true;
     }
-    status = overlay_db_save(&data->db);
+    status = overlay_commit(data);
+    if (status == 0 && data->upper_source != NULL)
+	status = sync_upper_all(data);
     pthread_mutex_unlock(&data->lock);
     return status;
 }
@@ -1021,7 +1279,9 @@ static int overlay_symlink(NetfsMount *mount, const char *rel,
 	return status;
     }
     overlay_entry_remove(&data->db, rel);
-    status = overlay_db_save(&data->db);
+    status = overlay_commit(data);
+    if (status == 0)
+	status = source_symlink(data, rel, target);
     pthread_mutex_unlock(&data->lock);
     return status;
 }
@@ -1084,7 +1344,13 @@ static int overlay_link(NetfsMount *mount, const char *from, const char *to)
 	status = -errno;
 	goto out;
     }
-    status = overlay_db_save(&data->db);
+    status = overlay_commit(data);
+    if (status == 0) {
+	if (data->upper_source != NULL)
+	    status = sync_upper_all(data);
+	else
+	    status = source_link(data, from, to);
+    }
 
   out:
     pthread_mutex_unlock(&data->lock);
@@ -1101,7 +1367,7 @@ static int overlay_statfs(NetfsMount *mount, const char *rel UNUSED,
 
 static int overlay_init(NetfsMount *mount, const char *mode,
 			const char *upper, const char *lower,
-			const char *guest)
+			const char *guest, NetfsMount *upper_source)
 {
     OverlayData *data;
     char db_path[OVERLAY_PATH_MAX];
@@ -1141,7 +1407,11 @@ static int overlay_init(NetfsMount *mount, const char *mode,
     data->db.mode = strcmp(mode, "block") == 0
 	? OVERLAY_MODE_BLOCK : OVERLAY_MODE_BIND;
     data->db.read_only = mount->read_only;
-    return overlay_db_save(&data->db);
+    data->upper_source = upper_source;
+    data->upper_ops = upper_source != NULL
+	? netfs_dir_ops_of(upper_source) : NULL;
+    data->db.upper_source = upper_source != NULL;
+    return overlay_commit(data);
 }
 
 void netfs_overlay_set_read_only(NetfsMount *mount)
@@ -1152,7 +1422,7 @@ void netfs_overlay_set_read_only(NetfsMount *mount)
 	return;
     pthread_mutex_lock(&data->lock);
     data->db.read_only = true;
-    (void) overlay_db_save(&data->db);
+    (void) overlay_commit(data);
     pthread_mutex_unlock(&data->lock);
 }
 
@@ -1193,7 +1463,8 @@ const NetfsBackend netfs_backend_overlay = {
 };
 
 int netfs_overlay_init(NetfsMount *mount, const char *mode, const char *upper,
-		       const char *lower, const char *guest)
+		       const char *lower, const char *guest,
+		       NetfsMount *upper_source)
 {
-    return overlay_init(mount, mode, upper, lower, guest);
+    return overlay_init(mount, mode, upper, lower, guest, upper_source);
 }
