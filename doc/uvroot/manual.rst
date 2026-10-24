@@ -504,19 +504,25 @@ Overlay
     In block mode the database also records the logical size, mode,
     modified ranges and a SHA-256 of the merged content.  A read
     materializes the temporary merged file in the netfs cache; the
-    helper commands bound at ``/dev/bkc`` and ``/dev/bme`` inspect and
-    permanently merge those deltas::
+    helper commands bound at ``/dev/bkc``, ``/dev/bme`` and ``/dev/brd``
+    inspect, merge and deduplicate those deltas::
 
         bkc [-r] PATH          # report unmerged data and hash state
         bme [-h] [-r] PATH     # merge into type 1; -h verifies first
+        brd [-r] PATH          # drop blocks/files already in type 2
 
     ``bkc`` exits 0 when the path is merged and consistent, 1 when it
-    has unmerged blocks, and 2 on an error or hash mismatch.  ``bme``
-    requires the virtual root or the file owner when ``--vperm`` is
-    enabled; without vperm the normal host ownership rules apply.  The
-    helper is built as a static ``overlayctl`` next to ``uvroot``;
-    ``make install`` installs both, and the mount looks for it in the
-    directory of the running uvroot binary.
+    has unmerged blocks, and 2 on an error or hash mismatch.  ``brd``
+    drops 4 KiB block ranges whose bytes equal type 2 and removes a whole
+    type 1 file or symlink when it is identical to type 2; the logical
+    size, mode and merged-content hash are retained.  ``-r`` walks every
+    regular file below the directory.  It has the same permission rule as
+    ``bme`` and is refused for a read-only or source-backed type 1.
+    ``bme`` and ``brd`` require the virtual root or the file owner when
+    ``--vperm`` is enabled; without vperm the normal host ownership rules
+    apply.  The helper is built as a static ``overlayctl`` next to
+    ``uvroot``; ``make install`` installs both, and the mount looks for
+    it in the directory of the running uvroot binary.
 
     ::
 
@@ -524,6 +530,7 @@ Overlay
         uvroot -r / --overlay=block,/mnt/ovl,/tmp/upper,qcow2:///tmp/base.qcow2 /bin/sh
         uvroot -r / --overlay=block,/mnt/ovl,img:///tmp/upper.img,/tmp/lower /bin/sh
         /dev/bkc -r /mnt/ovl
+        /dev/brd -r /mnt/ovl
         /dev/bme -h /mnt/ovl/path
 
 Virtual permission options

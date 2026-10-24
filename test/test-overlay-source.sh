@@ -203,6 +203,14 @@ ok "bme explains the refusal" \
 ok "type 1 qcow2 persists across mounts" \
     "$(grep -c '^changed$' "$R/up-fresh.log")" "1"
 
+"$UVROOT" -r / \
+    "--overlay=block,/mnt/ovl,qcow2://$R/up.qcow2,$R/lower" \
+    /dev/brd /mnt/ovl/l >"$R/source-brd.log" 2>&1
+brd_status=$?
+ok "brd refuses a source-backed type 1" "$brd_status" "1"
+ok "brd explains the refusal" \
+    "$(grep -c 'type 1 is a source' "$R/source-brd.log")" "1"
+
 # ------------------------------------------------------------------
 # type 1 = raw image, type 2 = directory
 # ------------------------------------------------------------------

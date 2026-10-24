@@ -4285,9 +4285,9 @@ int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
     }
 
     /*
-     * The bkc/bme helpers need a stable view of both trees and of the
-     * database.  They are ordinary bindings; the helper itself is the
-     * same static binary as /dev/bkc and /dev/bme.
+     * The bkc/bme/brd helpers need a stable view of both trees and of
+     * the database.  They are ordinary bindings; the helper itself is
+     * the same static binary as /dev/bkc, /dev/bme and /dev/brd.
      */
     if (new_binding(tracee, upper, "/.uvroot-overlay/upper", true) == NULL)
 	note(tracee, WARNING, USER,
@@ -4313,6 +4313,7 @@ int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
 		    && access(resolved, X_OK) == 0) {
 		    (void) new_binding(tracee, resolved, "/dev/bkc", false);
 		    (void) new_binding(tracee, resolved, "/dev/bme", false);
+		    (void) new_binding(tracee, resolved, "/dev/brd", false);
 		}
 	    }
 	}

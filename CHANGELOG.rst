@@ -37,8 +37,9 @@ Added
   copies a whole file up, while block mode stores only the modified
   4 KiB blocks in a sparse type 1 file.  An ``.overlay`` database in the
   type 1 root records whiteouts and, for block mode, the logical size,
-  mode, modified ranges and SHA-256 of the merged content.  ``/dev/bkc``
-  and ``/dev/bme`` inspect and permanently merge deltas; merging is
+  mode, modified ranges and SHA-256 of the merged content.  ``/dev/bkc``,
+  ``/dev/bme`` and ``/dev/brd`` inspect, merge and deduplicate deltas;
+  ``brd -r`` recursively drops blocks/files identical to type 2; merging is
   allowed for the virtual root or the file owner when ``--vperm`` is
   enabled.  Either layer may be a host directory or an
   ``img://``/``qcow2://``/``nbd://``/``iscsi://``/network source URI:

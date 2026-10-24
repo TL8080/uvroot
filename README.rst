@@ -44,8 +44,8 @@ What this fork adds
   (interoperable with the kernel driver) carries the traffic
 - ``--overlay``: a writable type 1 over a read-only type 2, with whole-file
   (``bind``) or sparse block-delta (``block``) copy-up; either type may be a
-  directory or a raw/QCOW2/NBD/network source; ``/dev/bkc`` and ``/dev/bme``
-  inspect and permanently merge block deltas
+  directory or a raw/QCOW2/NBD/network source; ``/dev/bkc``, ``/dev/bme`` and
+  ``/dev/brd`` inspect, merge and deduplicate block deltas
 - ``/proc`` and ``df`` storage-information virtualisation for virtual roots
 
 A detailed, flag-by-flag comparison with upstream PRoot — plus usage recipes —
