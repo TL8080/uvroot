@@ -509,9 +509,13 @@ Overlay
     The value has four comma-separated fields in this fixed order:
     *mode*, *guest mount point*, *type 1*, *type 2*.  *mode* is ``bind``
     (a modified file is copied whole into type 1) or ``block`` (only the
-    modified 4 KiB blocks are stored in a sparse file in type 1).  Reads
-    check type 1 first and fall back to type 2; new files are created in
-    type 1.  Deleting a type 2 object records a whiteout in the
+    modified 4 KiB blocks are stored in a sparse file in type 1).  The
+    mode is a write policy: existing entries record whether they are full
+    files or block deltas, so a type 1 created in one mode remains
+    readable when mounted with the other; the selected mode is saved for
+    subsequent copy-ups.  Reads check type 1 first and fall back to type
+    2; new files are created in type 1.  Deleting a type 2 object records
+    a whiteout in the
     ``.overlay`` database in the type 1 root, so the path stays hidden
     even though the read-only tree cannot be changed.
 

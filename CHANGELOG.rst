@@ -118,6 +118,12 @@ Added
 Changed
 ~~~~~~~
 
+- ``--overlay`` mode now selects only the copy-up policy.  Existing
+  entries record whether they hold a full file or a sparse block delta,
+  so an upper created in ``block`` mode is readable when mounted with
+  ``bind`` (and vice versa); the selected mode is saved for subsequent
+  writes.  Previously a mode mismatch failed with ``EINVAL`` at mount
+  time.
 - ``vperm`` no longer takes over the interim ``.nvroot.vperm`` database
   name; only upstream PRoot's ``.proot-vperm`` is migrated to
   ``.uvroot-vperm``.

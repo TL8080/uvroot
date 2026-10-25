@@ -7,6 +7,7 @@ set -u
 UVROOT="${UVROOT:-$(cd "$(dirname "$0")/.." && pwd)/src/uvroot}"
 HELPER="$(dirname "$UVROOT")/overlayctl"
 R=/tmp/overlay-test
+R2=/tmp/overlay-mixed-mode
 pass=0
 fail=0
 
@@ -25,7 +26,12 @@ ov() {
     "$UVROOT" -r / "--overlay=$mode,/mnt/ovl,$R/upper,$R/lower" "$@"
 }
 
-rm -rf "$R"
+ov2() {
+    mode="$1"; shift
+    "$UVROOT" -r / "--overlay=$mode,/mnt/ovl,$R2/upper,$R2/lower" "$@"
+}
+
+rm -rf "$R" "$R2"
 mkdir -p "$R/upper" "$R/lower/dir"
 printf 'lower-a\n' > "$R/lower/a"
 printf 'lower-b\n' > "$R/lower/dir/b"
@@ -141,6 +147,32 @@ if [ -x "$HELPER" ]; then
 else
     echo "== bkc / bme skipped (no overlayctl) =="
 fi
+
+echo "== mode is a write policy: mixed upper formats =="
+mkdir -p "$R2/upper" "$R2/lower"
+dd if=/dev/urandom of="$R2/lower/data" bs=1K count=16 status=none
+cp "$R2/lower/data" "$R2/lower-orig"
+cp "$R2/lower/data" "$R2/expected"
+ov2 block /bin/sh -c \
+    "dd if=/dev/zero of=/mnt/ovl/data bs=1 seek=4096 count=4096 conv=notrunc status=none" \
+    >/dev/null 2>&1
+dd if=/dev/zero of="$R2/expected" bs=1 seek=4096 count=4096 conv=notrunc status=none
+ok "a block-created upper is readable with bind" \
+    "$(ov2 bind /bin/cat /mnt/ovl/data 2>/dev/null | cmp -s - "$R2/expected" && echo yes || echo no)" "yes"
+ok "the block entry survived the bind mount" \
+    "$(grep -c '^B	data	' "$R2/upper/.overlay" || true)" "1"
+ok "the selected bind mode is recorded" \
+    "$(grep -c '^mode bind$' "$R2/upper/.overlay")" "1"
+printf 'bind-write\n' > "$R2/newcontent"
+ov2 bind /bin/sh -c "cat '$R2/newcontent' > /mnt/ovl/data" >/dev/null 2>&1
+ok "a bind write replaces the block entry with a full file" \
+    "$(cat "$R2/upper/data")" "bind-write"
+ok "the block entry is gone" \
+    "$(grep -c '^B	data	' "$R2/upper/.overlay" || true)" "0"
+ok "the lower copy is untouched" \
+    "$(cmp -s "$R2/lower/data" "$R2/lower-orig" && echo yes || echo no)" "yes"
+ok "the full file is readable in block mode too" \
+    "$(ov2 block /bin/cat /mnt/ovl/data 2>/dev/null)" "bind-write"
 
 echo
 echo "passed: $pass   failed: $fail"

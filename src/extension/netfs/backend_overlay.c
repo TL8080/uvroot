@@ -1476,14 +1476,12 @@ static int overlay_init(NetfsMount *mount, const char *mode,
 	mount->backend_data = NULL;
 	return status;
     }
-    if (data->db.entries != NULL
-	&& data->db.mode != (strcmp(mode, "block") == 0
-			     ? OVERLAY_MODE_BLOCK : OVERLAY_MODE_BIND)) {
-	overlay_db_free(&data->db);
-	talloc_free(data);
-	mount->backend_data = NULL;
-	return -EINVAL;
-    }
+    /*
+     * The mode selects the copy-up policy, not the on-disk format of
+     * existing entries.  Each entry records whether it is a full file or
+     * a sparse block delta, so a tree created in one mode is readable in
+     * the other; the selected mode is saved for subsequent writes.
+     */
     free(data->db.upper);
     free(data->db.lower);
     free(data->db.guest);

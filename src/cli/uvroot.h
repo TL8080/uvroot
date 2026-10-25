@@ -547,9 +547,13 @@ Based on PRoot, Copyright (C) 2015 STMicroelectronics.",
 		 .detail =
 		 "\tThe syntax is *mode*,*guest*,*type1*,*type2* in that fixed\n\
 \torder.  *mode* is bind (whole-file copy-up) or block (only modified\n\
-\tblocks are stored in type 1).  Reads use type 1 first and fall back to\n\
-\ttype 2; new files go to type 1, and modifying a type 2 file copies it\n\
-\tto type 1.  A .overlay database in the type 1 root records whiteouts\n\
+\tblocks are stored in type 1).  The mode is a write policy: existing\n\
+\tentries record whether they are full files or block deltas, so a type\n\
+\t1 created in one mode remains readable when mounted with the other;\n\
+\tthe selected mode is saved for subsequent copy-ups.  Reads use type 1\n\
+\tfirst and fall back to type 2; new files go to type 1, and modifying\n\
+\ta type 2 file copies it to type 1.  A .overlay database in the type 1\n\
+\troot records whiteouts\n\
 \tand, in block mode, the sparse block list and SHA-256 of the merged\n\
 \tcontent.  The /dev/bkc and /dev/bme helpers inspect and permanently\n\
 \tmerge those deltas (bkc [-r] PATH, bme [-h] [-r] PATH); merging is\n\
