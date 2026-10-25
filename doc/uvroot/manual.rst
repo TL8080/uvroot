@@ -572,6 +572,10 @@ Overlay
         /dev/brd -r /mnt/ovl
         /dev/bme -h /mnt/ovl/path
 
+    Multiple ordinary overlays are allowed, each on its own guest path;
+    only the first one owns the ``/dev/bkc``, ``/dev/bme`` and
+    ``/dev/brd`` helpers.  Every overlay has a private hidden subtree.
+
 --overlay-root=string
     Overlay the guest root itself over its read-only lower tree.
 
@@ -582,7 +586,8 @@ Overlay
     ``/lib``, ``/lib64``, ``/etc``, ``/dev``, ``/proc``, ``/sys`` and
     ``/run``) as ordinary subdirectory bindings, so host tools and their
     dynamic loader can run from the root overlay.  This root overlay can
-    be combined with one ordinary ``--overlay`` mount.  ``/dev/bkc``,
+    be combined with any number of ordinary ``--overlay`` mounts.
+    ``/dev/bkc``,
     ``/dev/bme`` and ``/dev/brd`` are attached to the ordinary overlay;
     the root overlay itself has no helper exposure::
 

@@ -31,6 +31,9 @@ Added
   libnfs, libnbd, libiscsi, libext2fs and zlib are resolved with
   ``dlopen()``, and the QCOW2 translation (including COW writes,
   refcount maintenance and compressed clusters) is implemented in tree.
+- Multiple ordinary ``--overlay`` mounts are supported, each on its own
+  guest path with a private hidden subtree.  Only the first ordinary
+  overlay owns the ``/dev/bkc``, ``/dev/bme`` and ``/dev/brd`` helpers.
 - ``--overlay-root=<bind|block>,<upper>`` overlays the guest root itself;
   the tree selected by ``-r`` is the read-only lower.  The three-field
   ``mode,upper,lower`` form is also accepted.  With an upper of ``/``,

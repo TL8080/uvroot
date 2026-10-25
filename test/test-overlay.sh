@@ -199,6 +199,25 @@ ok "an upper .uvroot-vperm is unreadable" \
 ok "root and ordinary uppers stay separate" \
     "$(test -f "$R3/root/new-root" && test ! -e "$R3/be-upper/new-root" && test -f "$R3/be-upper/new" && echo yes || echo no)" "yes"
 
+echo "== multiple ordinary overlay mounts =="
+R4=/tmp/overlay-test/multi
+rm -rf "$R4"
+mkdir -p "$R4/root" "$R4/u1" "$R4/l1" "$R4/u2" "$R4/l2"
+printf 'one\n' > "$R4/l1/one"
+printf 'two\n' > "$R4/l2/two"
+multi() {
+    "$UVROOT" -r "$R4/root" -b /bin:/bin -b /usr:/usr -b /lib:/lib \
+        -b /lib64:/lib64 \
+        "--overlay=block,/o1,$R4/u1,$R4/l1" \
+        "--overlay=block,/o2,$R4/u2,$R4/l2" "$@"
+}
+ok "first overlay reads its lower" "$(multi /bin/cat /o1/one 2>/dev/null)" "one"
+ok "second overlay reads its lower" "$(multi /bin/cat /o2/two 2>/dev/null)" "two"
+ok "both overlays write independently" \
+    "$(multi /bin/sh -c 'printf x >/o1/x; printf y >/o2/y; cat /o1/x /o2/y' 2>/dev/null)" "xy"
+ok "second overlay has its own hidden paths" \
+    "$(test -f "$R4/u2/y" && test ! -e "$R4/u1/y" && echo yes || echo no)" "yes"
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

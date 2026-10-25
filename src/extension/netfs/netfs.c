@@ -79,6 +79,7 @@ typedef struct NetfsConfig {
     char *tmp_root;
     bool tmp_root_is_temporary;
     unsigned int next_mount_id;
+    unsigned int overlay_count;
 
     /* --read-only: every mount of this container refuses any change,
      * whatever the virtual identity -- id0 included.  */
@@ -4166,28 +4167,53 @@ static int add_overlay_mount(Tracee *tracee, const char *spec,
     }
     config = config_of(extension);
 
+    bool first_non_root = true;
+    bool helpers = false;
+
     for (other = config->mounts; other != NULL; other = other->next) {
 	if (other->backend != &netfs_backend_overlay)
 	    continue;
-	if (root_overlay) {
+	if (other->guest != NULL && strcmp(other->guest, guest) == 0) {
+	    note(tracee, ERROR, USER,
+		 "overlay: %s is already an overlay mount", guest);
+	    return -1;
+	}
+	if (other->guest != NULL && strcmp(other->guest, "/") != 0)
+	    first_non_root = false;
+	if (root_overlay && other->guest != NULL
+	    && strcmp(other->guest, "/") == 0) {
 	    note(tracee, ERROR, USER,
 		 "overlay: a root overlay is already mounted");
 	    return -1;
 	}
-	if (other->guest != NULL && strcmp(other->guest, "/") != 0) {
-	    note(tracee, ERROR, USER,
-		 "overlay: only one non-root overlay mount is supported per container");
-	    return -1;
-	}
     }
 
-    {
-	const char *hidden = root_overlay
-	    ? "/.uvroot-overlay/root" : "/.uvroot-overlay";
+    if (root_overlay) {
+	snprintf(hidden_upper, sizeof(hidden_upper),
+		 "/.uvroot-overlay/root/upper");
+	snprintf(hidden_lower, sizeof(hidden_lower),
+		 "/.uvroot-overlay/root/lower");
+	snprintf(hidden_source, sizeof(hidden_source),
+		 "/.uvroot-overlay/root/type1-src");
+    } else if (first_non_root) {
+	/* Keep the historical path (and /dev/bkc) for the first data
+	 * overlay; additional overlays get their own private subtree. */
+	snprintf(hidden_upper, sizeof(hidden_upper),
+		 "/.uvroot-overlay/upper");
+	snprintf(hidden_lower, sizeof(hidden_lower),
+		 "/.uvroot-overlay/lower");
+	snprintf(hidden_source, sizeof(hidden_source),
+		 "/.uvroot-overlay/type1-src");
+	helpers = true;
+    } else {
+	unsigned int id = config->overlay_count;
 
-	snprintf(hidden_upper, sizeof(hidden_upper), "%s/upper", hidden);
-	snprintf(hidden_lower, sizeof(hidden_lower), "%s/lower", hidden);
-	snprintf(hidden_source, sizeof(hidden_source), "%s/type1-src", hidden);
+	snprintf(hidden_upper, sizeof(hidden_upper),
+		 "/.uvroot-overlay/o%u/upper", id);
+	snprintf(hidden_lower, sizeof(hidden_lower),
+		 "/.uvroot-overlay/o%u/lower", id);
+	snprintf(hidden_source, sizeof(hidden_source),
+		 "/.uvroot-overlay/o%u/type1-src", id);
     }
     if (snprintf(upper, sizeof(upper), "%s", upper_arg) >= (int) sizeof(upper)
 	|| snprintf(lower, sizeof(lower), "%s", lower_arg) >= (int) sizeof(lower))
@@ -4397,7 +4423,7 @@ static int add_overlay_mount(Tracee *tracee, const char *spec,
 	note(tracee, WARNING, USER,
 	     "overlay: cannot expose the bkc/bme helper path for type 2");
 
-    if (!root_overlay) {
+    if (helpers) {
 	ssize_t length = readlink("/proc/self/exe", helper,
 				 sizeof(helper) - 1);
 
@@ -4421,6 +4447,7 @@ static int add_overlay_mount(Tracee *tracee, const char *spec,
 
     mount->next = config->mounts;
     config->mounts = mount;
+    config->overlay_count++;
 
     if (root_overlay && strcmp(upper, "/") == 0) {
 	static const char *const runtime_dirs[] = {

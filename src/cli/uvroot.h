@@ -553,7 +553,7 @@ Based on PRoot, Copyright (C) 2015 STMicroelectronics.",
 		 "\tThe syntax is *mode*,*upper*.  The tree selected by -r is\n\
 \tthe read-only lower, so only the upper is given; the three-field\n\
 \tform *mode*,*upper*,*lower* is also accepted.  This overlay can be\n\
-\tcombined with one ordinary --overlay mount.  The /dev/bkc, /dev/bme\n\
+\tcombined with ordinary --overlay mounts; /dev/bkc and friends belong\n\
 \tand /dev/brd helpers are attached to the ordinary overlay only.\n\
 \tExample: --overlay-root=block,/var/upper",
 		 },
