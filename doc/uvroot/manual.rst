@@ -571,12 +571,20 @@ records a virtual uid, gid and mode for a subset of the paths; the
 ``stat()`` family reports those values, ``chmod()`` and ``chown()`` only
 update the database (the host metadata is never modified), and
 ``open()``, ``access()`` and ``execve()`` are checked against the
-recorded mode.  Paths without an entry keep the host's own metadata.
+recorded mode.  For execution, the virtual mode is authoritative: a
+virtual ``700`` file runs even when its host inode is stored as ``600``,
+and a virtual ``600`` file is refused even when the host inode is
+``700``.  When the host inode has no execute bit, uvroot adds the owner
+execute bit just before ``execve(2)`` so the kernel can enter the
+program.  Paths without an entry keep the host's own metadata.
 The virtual identity is per process: the ``setuid()``/``setgid()`` family
 only changes it (the host credentials are never touched), and it is
 inherited across fork and exec.  Virtual ``su`` and ``sudo`` programs are
 generated and bound into the container so that identities can actually be
-switched there.  Switching is bounded, though: only the virtual root may
+switched there.  A plain ``-b`` mount outside the guest root (``-b /:/``,
+for example) is not a vperm root: the host file's ownership and mode still
+apply there.  Put such a file under the guest root or an overlay if it
+needs virtual ownership.  Switching is bounded, though: only the virtual root may
 change the virtual identity, another id can only pass its own value back,
 and an unprivileged id can never switch to root -- neither through the
 shims nor by calling the internal switch path directly.  Without the

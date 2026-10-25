@@ -30,6 +30,7 @@
 extern int vperm_callback(Extension * extension, ExtensionEvent event,
 			  intptr_t d1, intptr_t d2);
 extern int vperm_enable(Tracee * tracee);
+extern int vperm_exec_status(Tracee * tracee, const char *host_path);
 
 /* The initial virtual identity of @tracee (the real one without vperm).  */
 extern uid_t vperm_initial_uid(Tracee * tracee);

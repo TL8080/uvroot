@@ -34,6 +34,7 @@
 #include <inttypes.h>		/* PRI*, */
 
 #include "path/path.h"
+#include "extension/vperm/vperm.h"
 #include "path/binding.h"
 #include "path/canon.h"
 #include "path/proc.h"
@@ -141,8 +142,12 @@ which(Tracee *tracee, const char *paths, char host_path[PATH_MAX],
 	}
 
 	if (is_explicit && (statr.st_mode & S_IXUSR) == 0) {
-	    note(tracee, ERROR, USER, "'%s' is not executable", command);
-	    return -EACCES;
+	    int virtual_exec = vperm_exec_status(tracee, host_path);
+
+	    if (virtual_exec != 1) {
+		note(tracee, ERROR, USER, "'%s' is not executable", command);
+		return -EACCES;
+	    }
 	}
 
 	found = true;

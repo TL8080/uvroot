@@ -1741,9 +1741,34 @@ static void ensure_host_access(const char *host)
 	(void) chmod(host, S_IRWXU);
 }
 
+/*
+ * The kernel checks the host inode's execute bits before it enters the
+ * guest program.  A virtual mode of 700 over a host file stored as 600
+ * must still run, so add the owner execute bit before execve(2); the
+ * virtual mode has already been checked and remains authoritative.
+ */
+static void ensure_host_exec(const char *host)
+{
+    struct stat st;
+
+    if (host == NULL || host[0] == '\0')
+	return;
+    if (lstat(host, &st) == 0 && S_ISREG(st.st_mode)
+	&& (st.st_mode & 0111) == 0)
+	(void) chmod(host, (st.st_mode & 07777) | S_IXUSR);
+}
+
 /* ------------------------------------------------------------------ */
 /* Syscall hooks                                                       */
 /* ------------------------------------------------------------------ */
+
+static int capture_path(Tracee *tracee, VpermConfig *config,
+			VpermTracee *state, Reg reg);
+static int capture_host_path(Tracee *tracee, VpermConfig *config,
+			     VpermTracee *state, const char *host);
+static int check_access(VpermTracee *state, VpermConfig *config, int want);
+static int vperm_fs_access(Tracee *tracee, VpermTracee *state, int want,
+			   bool create);
 
 static int handle_enter_start(Tracee *tracee, VpermConfig *config)
 {
@@ -1770,6 +1795,35 @@ static int handle_enter_start(Tracee *tracee, VpermConfig *config)
 	if (get_sysarg_path(tracee, guest_path, SYSARG_1) >= 0
 	    && strcmp(guest_path, VMAP_MAGIC) == 0)
 	    return vmap_switch(tracee, config, state);
+
+	/*
+	 * The execve translation below replaces the path with uvroot's
+	 * loader, so the guest path must be checked and the host inode
+	 * prepared before that happens.  A virtual 0600 file must stay
+	 * non-executable even when the host copy is 0700, and a virtual
+	 * 0700 file must run even when the host copy is 0600.
+	 */
+	{
+	    char host[PATH_MAX];
+	    char resolved[PATH_MAX];
+
+	    if (get_sysarg_path(tracee, host, SYSARG_1) < 0)
+		return -EACCES;
+	    (void) substitute_binding(tracee, GUEST, host);
+	    if (realpath(host, resolved) != NULL)
+		snprintf(host, sizeof(host), "%s", resolved);
+	    if (capture_host_path(tracee, config, state, host) < 0)
+		return -EACCES;
+	}
+	{
+	    int verdict = check_access(state, config, X_OK);
+
+	    if (verdict == 0)
+		verdict = vperm_fs_access(tracee, state, X_OK, false);
+	    if (verdict < 0)
+		return verdict;
+	}
+	ensure_host_exec(state->pend_host);
     }
 
     switch (sysnum) {
@@ -1802,15 +1856,11 @@ static int handle_enter_start(Tracee *tracee, VpermConfig *config)
  * Compute the relative path for the syscall's path argument and remember
  * it for the exit stage.  Returns 0 when the path is not covered.
  */
-static int capture_path(Tracee *tracee, VpermConfig *config,
-			VpermTracee *state, Reg reg)
+static int capture_host_path(Tracee *tracee, VpermConfig *config,
+			     VpermTracee *state, const char *host)
 {
-    char host[PATH_MAX];
     const char *rel;
     VpermRoot *root;
-
-    if (get_sysarg_path(tracee, host, reg) < 0)
-	return 0;
 
     /* The mapping area lives outside the guest roots (it is bound in),
      * so it has to be recognized before the root lookup.  */
@@ -1862,6 +1912,16 @@ static int capture_path(Tracee *tracee, VpermConfig *config,
 
     state->pend_valid = true;
     return 0;
+}
+
+static int capture_path(Tracee *tracee, VpermConfig *config,
+			VpermTracee *state, Reg reg)
+{
+    char host[PATH_MAX];
+
+    if (get_sysarg_path(tracee, host, reg) < 0)
+	return 0;
+    return capture_host_path(tracee, config, state, host);
 }
 
 static int capture_fd(Tracee *tracee, VpermConfig *config,
@@ -2495,19 +2555,6 @@ static int handle_enter_end(Tracee *tracee, VpermConfig *config,
 		return verdict;
 	}
 	break;
-
-    case PR_execve:{
-	int verdict;
-
-	if (capture_path(tracee, config, state, SYSARG_1) < 0)
-	    return -EACCES;
-	verdict = check_access(state, config, X_OK);
-	if (verdict == 0)
-	    verdict = vperm_fs_access(tracee, state, X_OK, false);
-	if (verdict < 0)
-	    return verdict;
-	break;
-    }
 
     /* The mapping area (shims) is read-only for the container.  */
     case PR_unlink:
@@ -3486,6 +3533,44 @@ uid_t vperm_initial_uid(Tracee *tracee)
 	return getuid();
 
     return config_of(extension)->uid;
+}
+
+/*
+ * 1 when the virtual entry grants execute permission, -EACCES when it
+ * denies it, and 0 when the path is not virtualized.  execve's command
+ * lookup runs before the extension's enter hook, so it needs this view
+ * without mutating the host inode.
+ */
+int vperm_exec_status(Tracee *tracee, const char *host_path)
+{
+    Extension *extension = get_extension(tracee, vperm_callback);
+    VpermConfig *config;
+    VpermTracee *state;
+    VpermRoot *root;
+    const char *rel;
+    VpermEntry *entry;
+    uid_t uid;
+    gid_t gid;
+
+    if (extension == NULL || host_path == NULL)
+	return 0;
+    config = config_of(extension);
+    if (roots_build(tracee, config) < 0)
+	return 0;
+
+    root = find_root(config, host_path, &rel);
+    if (root == NULL || root->fs_backed
+	|| relative_of(root, host_path, rel) == NULL)
+	return 0;
+
+    entry = entry_find(root, rel);
+    if (entry == NULL)
+	return 0;
+
+    state = find_tracee_state(config, tracee->pid);
+    uid = state != NULL ? state->uid : config->uid;
+    gid = state != NULL ? state->gid : config->gid;
+    return perm_allows(entry, uid, gid, X_OK) ? 1 : -EACCES;
 }
 
 int vperm_enable(Tracee *tracee)

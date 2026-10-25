@@ -118,6 +118,13 @@ Added
 Changed
 ~~~~~~~
 
+- ``vperm`` now enforces execute permission from the virtual mode before
+  ``execve(2)``.  A virtual ``700`` file runs even when the host inode is
+  stored as ``600``, while a virtual ``600`` file is refused even when the
+  host inode is ``700``.  The owner execute bit is added to the host inode
+  only when execution actually needs it; ``chmod``/``chown`` still update
+  only the virtual database.  Direct command lookup now consults vperm
+  before rejecting a non-executable host file.
 - ``--overlay`` mode now selects only the copy-up policy.  Existing
   entries record whether they hold a full file or a sparse block delta,
   so an upper created in ``block`` mode is readable when mounted with

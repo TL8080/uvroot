@@ -33,6 +33,8 @@
 #include <assert.h>		/* assert(3), */
 
 #include "execve/execve.h"
+#include "extension/vperm/vperm.h"
+#include "extension/vperm/vperm.h"
 #include "execve/shebang.h"
 #include "execve/aoxp.h"
 #include "execve/ldso.h"
@@ -155,8 +157,10 @@ translate_and_check_exec(Tracee *tracee, char host_path[PATH_MAX],
 	return -ENOENT;
 
     status = access(host_path, X_OK);
-    if (status < 0)
-	return -EACCES;
+    if (status < 0) {
+	if (vperm_exec_status(tracee, host_path) != 1)
+	    return -EACCES;
+    }
 
     status = lstat(host_path, &statl);
     if (status < 0)

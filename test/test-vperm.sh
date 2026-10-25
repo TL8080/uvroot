@@ -76,6 +76,19 @@ ok "chmod keeps directory type" \
     "$(vp /bin/sh -c 'test -d /typed && echo dir || echo other')" "dir"
 
 vp_root() { "$UVROOT" -r "$R" $BINDS --vperm --vperm-id=0:0 "$@" 2>/dev/null; }
+
+echo "== execute permission follows the virtual mode =="
+printf '#!/bin/sh\necho exec-ok\n' > "$R/exec-tool"
+chmod 600 "$R/exec-tool"
+vp_root /bin/sh -c 'chmod 700 /exec-tool' >/dev/null
+ok "virtual 700 over host 600 executes" \
+    "$(vp_root /exec-tool)" "exec-ok"
+chmod 700 "$R/exec-tool"
+vp_root /bin/sh -c 'chmod 600 /exec-tool' >/dev/null
+exec_denied=$({ "$UVROOT" -r "$R" $BINDS --vperm --vperm-id=0:0 /exec-tool >/dev/null; } 2>&1)
+ok "virtual 600 over host 700 is denied" \
+    "$(printf '%s' "$exec_denied" | grep -c '权限\|denied')" "1"
+
 vp_root /bin/mkdir -m 000 /tight >/dev/null
 vp_root /bin/chmod 700 /tight >/dev/null
 ok "restrictive mkdir stays usable" \
