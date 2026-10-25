@@ -54,6 +54,44 @@ static int handle_option_r(Tracee *tracee, const Cli *cli UNUSED,
     return 0;
 }
 
+static bool path_is_guest_root(const char *path)
+{
+    char copy[PATH_MAX];
+    char *cursor;
+    size_t depth = 0;
+
+    if (path == NULL || path[0] != '/')
+	return false;
+    if (strlen(path) >= sizeof(copy))
+	return false;
+    strcpy(copy, path);
+
+    cursor = copy;
+    while (*cursor != '\0') {
+	char *start;
+
+	while (*cursor == '/')
+	    cursor++;
+	if (*cursor == '\0')
+	    break;
+	start = cursor;
+	while (*cursor != '\0' && *cursor != '/')
+	    cursor++;
+	if (*cursor != '\0')
+	    *cursor++ = '\0';
+
+	if (strcmp(start, ".") == 0)
+	    continue;
+	if (strcmp(start, "..") == 0) {
+	    if (depth > 0)
+		depth--;
+	    continue;
+	}
+	depth++;
+    }
+    return depth == 0;
+}
+
 static int handle_option_b(Tracee *tracee, const Cli *cli UNUSED,
 			   const char *value)
 {
@@ -75,14 +113,19 @@ static int handle_option_b(Tracee *tracee, const Cli *cli UNUSED,
     /*
      * Binding over the guest root would defeat -r and --overlay-root,
      * and silently replaces one binding with another (the last one for
-     * "/" wins).  Use -r or --overlay-root for the root itself.
+     * "/" wins).  Use -r or --overlay-root for the root itself.  Check
+     * the canonical guest path too, so //, /./, /tmp/.. and symlinks
+     * cannot bypass the guard.
      */
-    if ((guest != NULL && strcmp(guest, "/") == 0)
-	|| (guest == NULL && strcmp(host, "/") == 0)) {
-	note(tracee, ERROR, USER,
-	     "bind: refusing to bind over the guest root \"/\"; "
-	     "use -r or --overlay-root instead");
-	return -1;
+    {
+	const char *guest_path = guest != NULL ? guest : host;
+
+	if (path_is_guest_root(guest_path)) {
+	    note(tracee, ERROR, USER,
+		 "bind: refusing to bind over the guest root \"/\"; "
+		 "use -r or --overlay-root instead");
+	    return -1;
+	}
     }
 
     new_binding(tracee, host, guest, true);

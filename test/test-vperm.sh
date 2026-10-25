@@ -94,6 +94,9 @@ echo "== bind over the guest root is rejected =="
 root_bind_status=0
 "$UVROOT" -r "$R" -b /:/ /bin/true >/dev/null 2>&1 || root_bind_status=$?
 ok "bind to guest / is rejected" "$root_bind_status" "1"
+normalized_bind_status=0
+"$UVROOT" -r "$R" -b "$R:/tmp/.." /bin/true >/dev/null 2>&1 || normalized_bind_status=$?
+ok "bind to normalized guest / is rejected" "$normalized_bind_status" "1"
 
 echo "== object type and host access after creation =="
 mkdir -p "$R/typed"
