@@ -1892,6 +1892,8 @@ static int handle_enter_start(Tracee *tracee, VpermConfig *config)
     state->last_valid = false;
     state->pend_protected = false;
     state->pend_fs_backed = false;
+    state->pend_fs_root = false;
+    state->pend_host[0] = '\0';
     state->emulate = false;
 
     if (sysnum == PR_execve) {
@@ -1928,7 +1930,18 @@ static int handle_enter_start(Tracee *tracee, VpermConfig *config)
 	    if (verdict < 0)
 		return verdict;
 	}
-	ensure_host_exec(state->pend_host);
+	/*
+	 * Only a virtual entry may grant execute permission over a host
+	 * inode that lacks x.  With no entry the host mode is
+	 * authoritative, so execve must not silently change it.
+	 */
+	if (state->pend_valid) {
+	    VpermEntry *entry = entry_find(state->pend_root, state->pend_rel);
+
+	    if (entry != NULL
+		&& perm_allows(entry, state->uid, state->gid, X_OK))
+		ensure_host_exec(state->pend_host);
+	}
     }
 
     switch (sysnum) {
@@ -1975,8 +1988,11 @@ static int capture_host_path(Tracee *tracee, VpermConfig *config,
 	return -EINVAL;
 
     root = find_root(config, host, &rel);
-    if (root == NULL)
+    if (root == NULL) {
+	state->pend_host[0] = '\0';
+	state->pend_fs_root = false;
 	return 0;
+    }
 
     snprintf(state->pend_host, sizeof(state->pend_host), "%s", host);
     state->pend_fs_backed = root->fs_backed;

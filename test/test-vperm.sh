@@ -107,6 +107,16 @@ subroot_out=$({ "$UVROOT" -r "$R" -b "$SUBROOT:/" /bin/true >/dev/null; } 2>&1)
 ok "bind subdirectory to guest / is allowed" \
     "$(printf '%s' "$subroot_out" | grep -c 'refusing to bind')" "0"
 
+echo "== paths without a vperm entry use host permissions =="
+printf '#!/bin/sh\necho host-mode-ok\n' > "$R/host-mode-tool"
+chmod 755 "$R/host-mode-tool"
+ok "host 755 without entry executes" \
+    "$("$UVROOT" -r "$R" $BINDS --vperm --vperm-id=0:0 /host-mode-tool 2>/dev/null)" "host-mode-ok"
+chmod 600 "$R/host-mode-tool"
+host_mode_denied=$({ "$UVROOT" -r "$R" $BINDS --vperm --vperm-id=0:0 /host-mode-tool >/dev/null; } 2>&1)
+ok "host 600 without entry is denied" \
+    "$(printf '%s' "$host_mode_denied" | grep -c 'not executable\|Permission denied')" "1"
+
 echo "== object type and host access after creation =="
 mkdir -p "$R/typed"
 vp /bin/chmod 700 /typed >/dev/null

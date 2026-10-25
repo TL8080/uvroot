@@ -606,7 +606,9 @@ virtual ``700`` file runs even when its host inode is stored as ``600``,
 and a virtual ``600`` file is refused even when the host inode is
 ``700``.  When the host inode has no execute bit, uvroot adds the owner
 execute bit just before ``execve(2)`` so the kernel can enter the
-program.  Paths without an entry keep the host's own metadata.
+program.  Paths without an entry keep the host's own metadata.  In particular,
+execution of a file with no vperm entry is governed by its host mode;
+uvroot does not add an execute bit merely because vperm is enabled.
 The virtual identity is per process: the ``setuid()``/``setgid()`` family
 only changes it (the host credentials are never touched), and it is
 inherited across fork and exec.  Virtual ``su`` and ``sudo`` programs are
