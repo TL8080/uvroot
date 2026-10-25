@@ -54,7 +54,7 @@ static int handle_option_r(Tracee *tracee, const Cli *cli UNUSED,
     return 0;
 }
 
-static bool path_is_guest_root(const char *path)
+static bool path_is_root(const char *path)
 {
     char copy[PATH_MAX];
     char *cursor;
@@ -111,19 +111,22 @@ static int handle_option_b(Tracee *tracee, const Cli *cli UNUSED,
     }
 
     /*
-     * Binding over the guest root would defeat -r and --overlay-root,
-     * and silently replaces one binding with another (the last one for
-     * "/" wins).  Use -r or --overlay-root for the root itself.  Check
-     * the canonical guest path too, so //, /./, /tmp/.. and symlinks
-     * cannot bypass the guard.
+     * The host root may only be supplied as a root through -r, overlay
+     * or a virtual/network disk.  Binding it to a subdirectory is also
+     * forbidden: it would expose every host path that the container is
+     * meant to keep out of reach.
      */
     {
-	const char *guest_path = guest != NULL ? guest : host;
+	char resolved[PATH_MAX];
+	const char *target = host;
 
-	if (path_is_guest_root(guest_path)) {
+	if (realpath(host, resolved) != NULL)
+	    target = resolved;
+
+	if (path_is_root(target)) {
 	    note(tracee, ERROR, USER,
-		 "bind: refusing to bind over the guest root \"/\"; "
-		 "use -r or --overlay-root instead");
+		 "bind: refusing to bind the host root \"/\"; "
+		 "use -r, --overlay-root, or a virtual/network disk root instead");
 	    return -1;
 	}
     }

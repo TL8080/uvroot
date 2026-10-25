@@ -103,11 +103,12 @@ Regular options
     point to the overlaid content.  In most cases this default
     behavior shouldn't be a problem, although it is possible to
     explicitly not dereference the guest location by appending it the
-    ``!`` character: ``-b *host_path*:*guest_location!*``.  A guest
-    location of ``/`` is rejected; select the root with ``-r`` or
-    ``--overlay-root`` instead.  The root itself may also be supplied by a
-    virtual or network disk (``--img=/:...``, ``--nbd=/:...`` or
-    ``--iscsi=/:...``), or by an overlay.
+    ``!`` character: ``-b *host_path*:*guest_location!*``.  Binding the
+    host root (``-b /:...``) is rejected: only ``-r``,
+    ``--overlay-root``, a virtual/network disk root (``--img=/:...``,
+    ``--nbd=/:...`` or ``--iscsi=/:...``) or an overlay may supply the
+    root.  Binding a subdirectory to the guest root (``-b /ce:/``) is
+    allowed.
 
 -q command, --qemu=command
     Execute guest programs through QEMU as specified by *command*.
@@ -581,8 +582,8 @@ Overlay
         uvroot -r /srv/root --overlay-root=block,/srv/base \
             --overlay=bind,/mnt/data,/srv/data-upper,/srv/data /bin/sh
 
-    Binding over the guest root with ``-b ...:/`` is rejected: use
-    ``-r`` or ``--overlay-root`` for the root itself.
+    Binding the host root with ``-b /:...`` is rejected; a subdirectory
+    may still be bound to the guest root (``-b /ce:/``).
 
 Virtual permission options
 --------------------------

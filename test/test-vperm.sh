@@ -90,13 +90,22 @@ bind_denied=$({ bind_run /bind/tool >/dev/null; } 2>&1)
 ok "bind virtual 600 over host 700 is denied" \
     "$(printf '%s' "$bind_denied" | grep -c '权限\|denied\|not executable')" "1"
 
-echo "== bind over the guest root is rejected =="
+echo "== host root bind is rejected =="
 root_bind_status=0
 "$UVROOT" -r "$R" -b /:/ /bin/true >/dev/null 2>&1 || root_bind_status=$?
-ok "bind to guest / is rejected" "$root_bind_status" "1"
+ok "bind of host / is rejected" "$root_bind_status" "1"
 normalized_bind_status=0
-"$UVROOT" -r "$R" -b "$R:/tmp/.." /bin/true >/dev/null 2>&1 || normalized_bind_status=$?
-ok "bind to normalized guest / is rejected" "$normalized_bind_status" "1"
+"$UVROOT" -r "$R" -b /tmp/..:/ce /bin/true >/dev/null 2>&1 || normalized_bind_status=$?
+ok "bind of normalized host / is rejected" "$normalized_bind_status" "1"
+
+
+echo "== a subdirectory may be bound to the guest root =="
+SUBROOT=/tmp/vperm-test/subroot
+rm -rf "$SUBROOT"; mkdir -p "$SUBROOT"
+printf 'subroot\n' > "$SUBROOT/marker"
+subroot_out=$({ "$UVROOT" -r "$R" -b "$SUBROOT:/" /bin/true >/dev/null; } 2>&1)
+ok "bind subdirectory to guest / is allowed" \
+    "$(printf '%s' "$subroot_out" | grep -c 'refusing to bind')" "0"
 
 echo "== object type and host access after creation =="
 mkdir -p "$R/typed"
