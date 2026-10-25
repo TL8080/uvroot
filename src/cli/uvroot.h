@@ -203,7 +203,10 @@ Based on PRoot, Copyright (C) 2015 STMicroelectronics.",
 \tpoint to the overlaid content.  In most cases this default\n\
 \tbehavior shouldn't be a problem, although it is possible to\n\
 \texplicitly not dereference the guest location by appending it the\n\
-\t! character: -b *host_path*:*guest_location!*.",
+\t! character: -b *host_path*:*guest_location!*.  Binding the host\n\
+\troot itself is rejected.  A subdirectory can still be written as\n\
+\t-b /ce:/, but overriding the root already selected with -r is\n\
+\tunsupported and buggy; use -b for subpaths only.",
 		 },
 		{.class = "Regular options",
 		 .arguments = {

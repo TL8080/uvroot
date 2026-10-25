@@ -107,8 +107,13 @@ Regular options
     host root (``-b /:...``) is rejected: only ``-r``,
     ``--overlay-root``, a virtual/network disk root (``--img=/:...``,
     ``--nbd=/:...`` or ``--iscsi=/:...``) or an overlay may supply the
-    root.  Binding a subdirectory to the guest root (``-b /ce:/``) is
-    allowed.
+    root.
+
+    A subdirectory may still be written as ``-b /ce:/``, but this is
+    only a syntactic possibility.  Do not use it to replace a root that
+    was already selected with ``-r``: it overrides the root binding,
+    hides bindings and overlays established for ``/``, and is known to
+    be buggy.  Use ``-r`` for the root and ``-b`` only for subpaths.
 
 -q command, --qemu=command
     Execute guest programs through QEMU as specified by *command*.
@@ -582,8 +587,10 @@ Overlay
         uvroot -r /srv/root --overlay-root=block,/srv/base \
             --overlay=bind,/mnt/data,/srv/data-upper,/srv/data /bin/sh
 
-    Binding the host root with ``-b /:...`` is rejected; a subdirectory
-    may still be bound to the guest root (``-b /ce:/``).
+    Binding the host root with ``-b /:...`` is rejected.  A subdirectory
+    may be written as ``-b /ce:/``, but this overrides the root selected
+    by ``-r`` and is not supported: it can hide the overlay's bindings
+    and is known to be buggy.  Use ``-r`` for the root.
 
 Virtual permission options
 --------------------------

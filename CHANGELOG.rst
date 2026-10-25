@@ -126,7 +126,9 @@ Changed
 
 - ``-b /:...`` is rejected: the host root may only be supplied by
   ``-r``, ``--overlay-root`` or a virtual/network disk root.  A
-  subdirectory may still be bound to the guest root (``-b /ce:/``).
+  subdirectory may still be written as ``-b /ce:/``, but overriding the
+  root already selected by ``-r`` is unsupported and known to be buggy;
+  ``-b`` should only be used for subpaths.
 - ``vperm`` now treats ``-b`` bind mounts as separate vperm roots, each
   with its own database under the per-user data directory.  A bind-mounted
   file now reports and accepts virtual ownership/mode instead of being
