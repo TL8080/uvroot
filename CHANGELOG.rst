@@ -118,6 +118,11 @@ Added
 Changed
 ~~~~~~~
 
+- ``vperm`` now treats ``-b`` bind mounts as separate vperm roots, each
+  with its own database under the per-user data directory.  A bind-mounted
+  file now reports and accepts virtual ownership/mode instead of being
+  passed straight to the host.  The special ``-b /:/`` root binding still
+  follows the binding conflict rule (the last binding for ``/`` wins).
 - ``vperm`` now enforces execute permission from the virtual mode before
   ``execve(2)``.  A virtual ``700`` file runs even when the host inode is
   stored as ``600``, while a virtual ``600`` file is refused even when the

@@ -69,6 +69,27 @@ ok "chgrp keeps owner" "$(vp /usr/bin/stat -c %u:%g /ids.txt)" "1234:42"
 vp /bin/sh -c 'chown 99 /ids.txt' >/dev/null
 ok "chown keeps group" "$(vp /usr/bin/stat -c %u:%g /ids.txt)" "99:42"
 
+echo "== bind mount is a vperm root =="
+BD=/tmp/vperm-test/bind
+rm -rf "$BD"; mkdir -p "$BD"
+printf 'bind-secret\n' > "$BD/file"
+chmod 644 "$BD/file"
+printf '#!/bin/sh\necho bind-exec-ok\n' > "$BD/tool"
+chmod 600 "$BD/tool"
+bind_run() { "$UVROOT" -r "$R" $BINDS -b "$BD:/bind" --vperm --vperm-id=0:0 "$@"; }
+bind_run /bin/sh -c 'chown 1234:5678 /bind/file' >/dev/null
+ok "bind file gets virtual owner" \
+    "$(bind_run /usr/bin/stat -c %u:%g /bind/file)" "1234:5678"
+ok "bind host owner untouched" \
+    "$(stat -c %u:%g "$BD/file")" "$(id -u):$(id -g)"
+bind_run /bin/sh -c 'chmod 700 /bind/tool' >/dev/null
+ok "bind virtual 700 over host 600 executes" \
+    "$(bind_run /bind/tool)" "bind-exec-ok"
+bind_run /bin/sh -c 'chmod 600 /bind/tool' >/dev/null
+bind_denied=$({ bind_run /bind/tool >/dev/null; } 2>&1)
+ok "bind virtual 600 over host 700 is denied" \
+    "$(printf '%s' "$bind_denied" | grep -c '权限\|denied\|not executable')" "1"
+
 echo "== object type and host access after creation =="
 mkdir -p "$R/typed"
 vp /bin/chmod 700 /typed >/dev/null

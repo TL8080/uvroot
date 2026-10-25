@@ -205,6 +205,7 @@ typedef struct VpermConfig {
     gid_t gid;
     char *explicit_db;
     bool built;
+    bool bindings_added;	/* bind mounts were added after setup */
     int build_status;		/* cached result of roots_build() */
 
     /* Switchable mapping directory: users.conf plus the generated
@@ -1255,11 +1256,43 @@ static void mkdir_recursive(const char *path)
     (void) mkdir(buffer, 0700);
 }
 
+/*
+ * Some roots (the host root itself, or a bind mount) may be read-only for
+ * the host user, or may not be allowed to carry a .uvroot-vperm file.
+ * Keep their databases in the per-user data directory instead.
+ */
+static char *data_db_path(VpermConfig *config, const char *tag,
+			  const char *key)
+{
+    const char *base = getenv("XDG_DATA_HOME");
+    char directory[PATH_MAX];
+    uint32_t hash = hash_path(key);
+
+    if (base == NULL || base[0] == '\0') {
+	const char *home = getenv("HOME");
+
+	if (home == NULL || home[0] == '\0')
+	    home = "/tmp";
+	snprintf(directory, sizeof(directory), "%s/.local/share/uvroot/vperm",
+		 home);
+    } else
+	snprintf(directory, sizeof(directory), "%s/uvroot/vperm", base);
+    mkdir_recursive(directory);
+    return talloc_asprintf(config, "%s/%s-%08x.db", directory, tag, hash);
+}
+
 static char *default_db_path(Tracee *tracee, VpermConfig *config,
 			     const char *host)
 {
     if (config->explicit_db != NULL && config->roots == NULL)
 	return talloc_strdup(config, config->explicit_db);
+
+    /*
+     * The host root is commonly read-only for the unprivileged user, and
+     * a bind of "/" would otherwise try to write /.uvroot-vperm.
+     */
+    if (strcmp(host, "/") == 0)
+	return data_db_path(config, "root", host);
 
     /* A netfs root lives in a temporary cache: the database must not be
      * part of it, otherwise it would be pushed to the server.  */
@@ -1314,7 +1347,7 @@ static void root_db_ident(VpermRoot *root)
 }
 
 static int root_add(Tracee *tracee, VpermConfig *config, const char *host,
-		    const char *guest)
+		    const char *guest, const char *db_override)
 {
     VpermRoot *root;
     char resolved[PATH_MAX];
@@ -1346,7 +1379,9 @@ static int root_add(Tracee *tracee, VpermConfig *config, const char *host,
     root->fs_backed = netfs_is_block_root(tracee, canonical);
 
     {
-	char *db = default_db_path(tracee, config, canonical);
+	char *db = db_override != NULL
+	    ? talloc_strdup(config, db_override)
+	    : default_db_path(tracee, config, canonical);
 
 	if (db == NULL) {
 	    talloc_free(root);
@@ -1405,6 +1440,68 @@ static int root_add(Tracee *tracee, VpermConfig *config, const char *host,
     return 0;
 }
 
+static bool root_exists(VpermConfig *config, const char *host)
+{
+    VpermRoot *root;
+
+    for (root = config->roots; root != NULL; root = root->next)
+	if (strcmp(root->host, host) == 0)
+	    return true;
+    return false;
+}
+
+static char *bind_db_path(VpermConfig *config, const char *host,
+			  const char *guest)
+{
+    char key[PATH_MAX * 2];
+
+    snprintf(key, sizeof(key), "%s\n%s", host, guest);
+    return data_db_path(config, "bind", key);
+}
+
+/*
+ * A bind mount is a separate vperm root: its host directory is not below
+ * the guest root, so its entries need their own database.  Bindings are
+ * canonicalized only after vperm_finalize(), hence this runs on the first
+ * syscall rather than while the command line is parsed.
+ */
+static int add_binding_roots(Tracee *tracee, VpermConfig *config)
+{
+    Bindings *head;
+    Binding *binding;
+    int status;
+
+    if (tracee->fs == NULL)
+	return 0;
+    head = tracee->fs->bindings.guest;
+    if (head == NULL)
+	return 0;
+
+    for (binding = CIRCLEQ_FIRST(head);
+	 binding != (Binding *) head;
+	 binding = CIRCLEQ_NEXT(binding, link.guest)) {
+	if (binding->internal || binding->host.path[0] == '\0'
+	    || binding->guest.path[0] == '\0')
+	    continue;
+	if (root_exists(config, binding->host.path))
+	    continue;
+
+	{
+	    char *db = bind_db_path(config, binding->host.path,
+				    binding->guest.path);
+
+	    if (db == NULL)
+		return -ENOMEM;
+	    status = root_add(tracee, config, binding->host.path,
+			      binding->guest.path, db);
+	    talloc_free(db);
+	}
+	if (status < 0)
+	    return status;
+    }
+    return 0;
+}
+
 static int roots_build(Tracee *tracee, VpermConfig *config)
 {
     const char *root_host;
@@ -1413,20 +1510,28 @@ static int roots_build(Tracee *tracee, VpermConfig *config)
     unsigned int i;
     int status;
 
-    if (config->built)
+    if (config->built) {
+	if (!config->bindings_added && tracee->fs != NULL
+	    && tracee->fs->bindings.guest != NULL) {
+	    config->bindings_added = true;
+	    status = add_binding_roots(tracee, config);
+	    if (status < 0)
+		config->build_status = status;
+	}
 	return config->build_status;
+    }
     config->built = true;
     config->build_status = 0;
 
     root_host = get_root(tracee);
     if (root_host != NULL) {
-	status = root_add(tracee, config, root_host, "/");
+	status = root_add(tracee, config, root_host, "/", NULL);
 	if (status < 0)
 	    goto fail;
     }
 
     for (i = 0; netfs_mount_at(tracee, i, &guest, &cache); i++) {
-	status = root_add(tracee, config, cache, guest);
+	status = root_add(tracee, config, cache, guest, NULL);
 	if (status < 0)
 	    goto fail;
     }

@@ -581,10 +581,13 @@ The virtual identity is per process: the ``setuid()``/``setgid()`` family
 only changes it (the host credentials are never touched), and it is
 inherited across fork and exec.  Virtual ``su`` and ``sudo`` programs are
 generated and bound into the container so that identities can actually be
-switched there.  A plain ``-b`` mount outside the guest root (``-b /:/``,
-for example) is not a vperm root: the host file's ownership and mode still
-apply there.  Put such a file under the guest root or an overlay if it
-needs virtual ownership.  Switching is bounded, though: only the virtual root may
+switched there.  Every ordinary ``-b`` bind mount is a separate vperm root:
+its files use virtual ownership and mode, and its database is kept under
+``$XDG_DATA_HOME/uvroot/vperm`` (or ``~/.local/share/uvroot/vperm``) rather
+than inside the mounted tree.  The special ``-b /:/`` of the host root
+conflicts with the guest-root binding: only one binding for ``/`` is active,
+so that layout falls back to the host root's own metadata.  Switching is
+bounded, though: only the virtual root may
 change the virtual identity, another id can only pass its own value back,
 and an unprivileged id can never switch to root -- neither through the
 shims nor by calling the internal switch path directly.  Without the
