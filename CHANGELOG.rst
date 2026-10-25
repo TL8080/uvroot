@@ -36,7 +36,9 @@ Added
   upper, so a root overlay and one ordinary ``--overlay`` can be used
   together.  The three-field ``mode,upper,lower`` form is also accepted.
   A root overlay may put its upper inside the lower tree, so
-  ``-r tmp --overlay-root=block,/`` is valid.
+  ``-r tmp --overlay-root=block,/`` is valid.  It does not bind host
+  runtime directories automatically; use normal subdirectory ``-b``
+  bindings for host tools.  Only ``-b /:...`` is forbidden.
 - ``--overlay=<bind|block>,<guest>,<type1>,<type2>`` presents a writable
   type 1 over a read-only type 2.  Reads take type 1 first and fall back
   to type 2; new files and modified files stay in type 1.  Bind mode

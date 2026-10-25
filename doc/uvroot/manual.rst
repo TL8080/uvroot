@@ -579,8 +579,12 @@ Overlay
     type 1, so only type 2 is given; the three-field form
     *mode*,*upper*,*lower* is also accepted.  For the root overlay the
     upper may be inside the lower tree, which is what
-    ``-r tmp --overlay-root=block,/`` needs.  This root overlay can be
-    combined with one ordinary ``--overlay`` mount.  ``/dev/bkc``, ``/dev/bme`` and
+    ``-r tmp --overlay-root=block,/`` needs.  This root overlay does not
+    inject host runtime directories by itself; if its lower is the host
+    root and host tools are needed, add normal subdirectory bindings
+    such as ``-b /usr:/usr -b /lib:/lib -b /lib64:/lib64``.  Only the
+    host root itself is forbidden as a ``-b`` source.  This root overlay
+    can be combined with one ordinary ``--overlay`` mount.  ``/dev/bkc``, ``/dev/bme`` and
     ``/dev/brd`` are attached to the ordinary overlay; the root overlay
     itself has no helper exposure::
 
