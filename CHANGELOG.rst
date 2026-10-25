@@ -159,6 +159,9 @@ Changed
 Fixed
 ~~~~~
 
+- Legacy vperm bind-root databases may contain an empty root entry;
+  ignore it instead of rejecting the database, since the root inode has
+  no virtual ownership key.
 - ``--wg=...:conf=/path`` now gives the file body to uvroot's built-in
   WireGuard engine.  Previously only an external implementation received
   the parsed file; the built-in engine saw the literal ``conf=`` string,

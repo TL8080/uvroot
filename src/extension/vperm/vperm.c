@@ -661,7 +661,18 @@ static int db_load(Tracee *tracee, VpermRoot *root)
 	    *newline = '\0';
 
 	db_unescape(path, decoded, sizeof(decoded));
-	if (decoded[0] == '\0' || decoded[0] == '/') {
+	if (decoded[0] == '\0') {
+	    /*
+	     * Older bind-root databases could record the root itself as
+	     * an empty relative path.  The root inode cannot be
+	     * virtualized, so ignore that entry instead of refusing to
+	     * start.
+	     */
+	    note(tracee, WARNING, USER,
+		 "vperm: %s:%u: ignoring empty root entry", root->db, lineno);
+	    continue;
+	}
+	if (decoded[0] == '/') {
 	    note(tracee, ERROR, USER, "vperm: %s:%u: invalid path",
 		 root->db, lineno);
 	    fclose(file);
@@ -1731,7 +1742,12 @@ static void remember_change(VpermRoot *root, const char *rel, mode_t mode,
 			    bool have_mode, uid_t uid, bool have_uid,
 			    gid_t gid, bool have_gid)
 {
-    bool fresh = (entry_find(root, rel) == NULL);
+    bool fresh;
+
+    /* The root inode itself has no relative database key.  */
+    if (rel == NULL || rel[0] == '\0')
+	return;
+    fresh = (entry_find(root, rel) == NULL);
     VpermEntry *entry = entry_get(root, rel, true);
 
     if (entry == NULL)
@@ -1790,7 +1806,11 @@ static void remember_change(VpermRoot *root, const char *rel, mode_t mode,
  */
 static void record_symlink(VpermTracee *state)
 {
-    VpermEntry *entry = entry_find(state->pend_root, state->pend_rel);
+    VpermEntry *entry;
+
+    if (state->pend_rel[0] == '\0')
+	return;
+    entry = entry_find(state->pend_root, state->pend_rel);
 
     if (entry == NULL) {
 	entry = entry_get(state->pend_root, state->pend_rel, true);
@@ -1815,6 +1835,8 @@ static void record_hard_link(VpermTracee *state)
 {
     VpermEntry *entry;
 
+    if (state->pend_rel[0] == '\0')
+	return;
     if (!state->link_valid) {
 	entry_remove_tree(state->pend_root, state->pend_rel);
 	(void) db_save(state->pend_root);
