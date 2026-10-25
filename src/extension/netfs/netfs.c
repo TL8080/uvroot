@@ -4407,26 +4407,5 @@ int netfs_add_overlay_root_mount(Tracee *tracee, const char *spec)
 	return -1;
     status = add_overlay_mount(tracee, full, true);
     talloc_free(full);
-    if (status < 0)
-	return status;
-
-    /*
-     * A root overlay whose lower tree is the host root still needs the
-     * host runtime directories as ordinary bindings: the overlay cache
-     * is not a place from which the host dynamic loader or bash can be
-     * executed.  These are host subdirectories, not a bind of "/", so
-     * they are allowed by the -b guard.
-     */
-    if (strcmp(lower, "/") == 0) {
-	static const char *const runtime_dirs[] = {
-	    "/bin", "/usr", "/lib", "/lib64", "/etc", "/dev", NULL
-	};
-	const char *const *dir;
-
-	for (dir = runtime_dirs; *dir != NULL; dir++) {
-	    if (access(*dir, X_OK) == 0)
-		(void) new_binding(tracee, *dir, *dir, true);
-	}
-    }
-    return 0;
+    return status;
 }
