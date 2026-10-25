@@ -1271,6 +1271,71 @@ static void mkdir_recursive(const char *path)
  * Keep their databases in the per-user data directory instead.
  */
 static char *data_db_path(VpermConfig *config, const char *tag,
+			  const char *key);
+
+static void migrate_db_file(const char *from, const char *to)
+{
+    char buffer[65536];
+    int in;
+    int out;
+    ssize_t got;
+
+    if (access(from, R_OK) != 0)
+	return;
+    if (access(to, F_OK) == 0) {
+	struct stat to_st;
+
+	/* Replace only a header-only database left by an earlier run. */
+	if (stat(to, &to_st) != 0 || to_st.st_size > 128)
+	    return;
+	(void) unlink(to);
+    }
+    in = open(from, O_RDONLY | O_CLOEXEC);
+    if (in < 0)
+	return;
+    out = open(to, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+    if (out < 0) {
+	close(in);
+	return;
+    }
+    while ((got = read(in, buffer, sizeof(buffer))) > 0) {
+	ssize_t done = 0;
+
+	while (done < got) {
+	    ssize_t written = write(out, buffer + done, got - done);
+
+	    if (written <= 0) {
+		close(in);
+		close(out);
+		return;
+	    }
+	    done += written;
+	}
+    }
+    close(in);
+    close(out);
+}
+
+static char *overlay_db_path(Tracee *tracee, VpermConfig *config,
+			     const char *lower, const char *upper)
+{
+    char *db;
+
+    if (strcmp(upper, "/") == 0) {
+	db = data_db_path(config, "root", "/");
+    } else {
+	db = talloc_asprintf(config, "%s/%s", upper, VPERM_DB_NAME);
+	if (db != NULL) {
+	    char old[PATH_MAX];
+
+	    snprintf(old, sizeof(old), "%s/%s", lower, VPERM_DB_NAME);
+	    migrate_db_file(old, db);
+	}
+    }
+    return db;
+}
+
+static char *data_db_path(VpermConfig *config, const char *tag,
 			  const char *key)
 {
     const char *base = getenv("XDG_DATA_HOME");
@@ -1295,6 +1360,20 @@ static char *default_db_path(Tracee *tracee, VpermConfig *config,
 {
     if (config->explicit_db != NULL && config->roots == NULL)
 	return talloc_strdup(config, config->explicit_db);
+
+    {
+	const char *root = get_root(tracee);
+	const char *upper = NULL;
+
+	if (root != NULL && strcmp(host, root) == 0
+	    && netfs_root_overlay_upper(tracee, &upper)) {
+	    const char *lower = NULL;
+
+	    (void) netfs_root_overlay_lower(tracee, &lower);
+	    return overlay_db_path(tracee, config,
+				   lower != NULL ? lower : root, upper);
+	}
+    }
 
     /*
      * The host root is commonly read-only for the unprivileged user, and
@@ -1437,6 +1516,18 @@ static int root_add(Tracee *tracee, VpermConfig *config, const char *host,
     }
 
     root_db_rel(root);
+    /*
+     * A root-overlay database lives in the writable upper, which is
+     * outside the root's host path.  The guest can still reach it as
+     * /.uvroot-vperm through the overlay, so hide that guest name too.
+     */
+    if (root->db_rel == NULL && db_override != NULL
+	&& root->guest != NULL && strcmp(root->guest, "/") == 0) {
+	const char *base = strrchr(db_override, '/');
+
+	if (base != NULL && strcmp(base + 1, VPERM_DB_NAME) == 0)
+	    root->db_rel = talloc_strdup(root, VPERM_DB_NAME);
+    }
     root_db_ident(root);
 
     if (db_load(tracee, root) < 0) {
@@ -1540,7 +1631,20 @@ static int roots_build(Tracee *tracee, VpermConfig *config)
     }
 
     for (i = 0; netfs_mount_at(tracee, i, &guest, &cache); i++) {
-	status = root_add(tracee, config, cache, guest, NULL);
+	char *db = NULL;
+	const char *upper = NULL;
+
+	if (guest != NULL && strcmp(guest, "/") == 0
+	    && netfs_root_overlay_upper(tracee, &upper)) {
+	    const char *lower = NULL;
+
+	    (void) netfs_root_overlay_lower(tracee, &lower);
+	    db = overlay_db_path(tracee, config,
+				 lower != NULL ? lower : get_root(tracee),
+				 upper);
+	}
+	status = root_add(tracee, config, cache, guest, db);
+	talloc_free(db);
 	if (status < 0)
 	    goto fail;
     }

@@ -629,6 +629,10 @@ virtual ``su``/``sudo`` (``--vperm-nosu``) an unprivileged id cannot
 switch at all.  ``capset``, ``ptrace`` and ``process_vm_readv``/
 ``process_vm_writev`` are intercepted as well.
 
+When the guest root is a root overlay, the vperm database is stored in
+the overlay's writable upper and is hidden from the guest: it cannot be
+read, written, listed or hard-linked through ``/.uvroot-vperm``.
+
 A virtual root may also create privileged ports.  The host kernel
 refuses ``bind()`` to ports below 1024 without ``CAP_NET_BIND_SERVICE``,
 so for a virtual root such a port is moved to a high one for the real

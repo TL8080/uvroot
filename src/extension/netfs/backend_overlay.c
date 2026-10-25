@@ -43,12 +43,20 @@ static OverlayData *overlay_data(NetfsMount *mount)
 /* The database and its temporary files are not part of the merged view.  */
 static bool overlay_private(const char *rel)
 {
+    static const char vperm_name[] = ".uvroot-vperm";
+
     if (strcmp(rel, OVERLAY_DB_NAME) == 0)
 	return true;
     if (strncmp(rel, OVERLAY_DB_NAME, strlen(OVERLAY_DB_NAME)) == 0) {
 	char next = rel[strlen(OVERLAY_DB_NAME)];
 
 	return next == '/' || next == '.';
+    }
+    /* vperm keeps its database in the writable upper; never expose it. */
+    if (strncmp(rel, vperm_name, sizeof(vperm_name) - 1) == 0) {
+	char next = rel[sizeof(vperm_name) - 1];
+
+	return next == '\0' || next == '/' || next == '.';
     }
     return strncmp(rel, ".bkc-check", sizeof(".bkc-check") - 1) == 0
 	|| strncmp(rel, ".bme-verify", sizeof(".bme-verify") - 1) == 0;
@@ -1503,6 +1511,20 @@ static int overlay_init(NetfsMount *mount, const char *mode,
 	? netfs_dir_ops_of(upper_source) : NULL;
     data->db.upper_source = upper_source != NULL;
     return overlay_commit(data);
+}
+
+const char *netfs_overlay_lower(NetfsMount *mount)
+{
+    OverlayData *data = overlay_data(mount);
+
+    return data != NULL ? data->db.lower : NULL;
+}
+
+const char *netfs_overlay_upper(NetfsMount *mount)
+{
+    OverlayData *data = overlay_data(mount);
+
+    return data != NULL ? data->db.upper : NULL;
 }
 
 void netfs_overlay_set_read_only(NetfsMount *mount)

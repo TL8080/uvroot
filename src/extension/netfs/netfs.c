@@ -3367,6 +3367,60 @@ bool netfs_mount_at(Tracee *tracee, unsigned int index, const char **guest,
     return false;
 }
 
+bool netfs_root_overlay_upper(Tracee *tracee, const char **upper)
+{
+    Extension *extension;
+    NetfsConfig *config;
+    NetfsMount *mount;
+
+    if (upper != NULL)
+	*upper = NULL;
+    extension = get_extension(tracee, netfs_callback);
+    if (extension == NULL || extension->config == NULL)
+	return false;
+    config = config_of(extension);
+    for (mount = config->mounts; mount != NULL; mount = mount->next) {
+	if (mount->backend == &netfs_backend_overlay
+	    && mount->guest != NULL && strcmp(mount->guest, "/") == 0) {
+	    const char *path = netfs_overlay_upper(mount);
+
+	    if (path != NULL) {
+		if (upper != NULL)
+		    *upper = path;
+		return true;
+	    }
+	}
+    }
+    return false;
+}
+
+bool netfs_root_overlay_lower(Tracee *tracee, const char **lower)
+{
+    Extension *extension;
+    NetfsConfig *config;
+    NetfsMount *mount;
+
+    if (lower != NULL)
+	*lower = NULL;
+    extension = get_extension(tracee, netfs_callback);
+    if (extension == NULL || extension->config == NULL)
+	return false;
+    config = config_of(extension);
+    for (mount = config->mounts; mount != NULL; mount = mount->next) {
+	if (mount->backend == &netfs_backend_overlay
+	    && mount->guest != NULL && strcmp(mount->guest, "/") == 0) {
+	    const char *path = netfs_overlay_lower(mount);
+
+	    if (path != NULL) {
+		if (lower != NULL)
+		    *lower = path;
+		return true;
+	    }
+	}
+    }
+    return false;
+}
+
 /*
  * Open a block backend and stack a filesystem driver on it; the caller
  * then owns the image and serves the other processes.  Returns -ENODEV

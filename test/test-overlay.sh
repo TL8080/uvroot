@@ -180,6 +180,7 @@ rm -rf "$R3"
 mkdir -p "$R3/root" "$R3/lower" "$R3/be-upper"
 printf 'root-upper\n' > "$R3/root/root-file"
 printf 'lower-only\n' > "$R3/lower/lower-file"
+printf 'vperm-secret\n' > "$R3/root/.uvroot-vperm"
 ro() {
     "$UVROOT" -r "$R3/lower"         -b /bin:/bin -b /usr:/usr -b /lib:/lib -b /lib64:/lib64         "--overlay-root=block,$R3/root"         "--overlay=block,/be,$R3/be-upper,$R3/lower" "$@"
 }
@@ -191,6 +192,10 @@ ok "the ordinary overlay still reads its lower" \
     "$(ro /bin/cat /be/lower-file 2>/dev/null)" "lower-only"
 ok "the ordinary overlay writes its own upper" \
     "$(ro /bin/sh -c 'printf be-write > /be/new; cat /be/new' 2>/dev/null)" "be-write"
+ok "an upper .uvroot-vperm is hidden" \
+    "$(ro /bin/ls -a / 2>/dev/null | grep -c '^\.uvroot-vperm$')" "0"
+ok "an upper .uvroot-vperm is unreadable" \
+    "$(ro /bin/cat /.uvroot-vperm 2>/dev/null)" ""
 ok "root and ordinary uppers stay separate" \
     "$(test -f "$R3/root/new-root" && test ! -e "$R3/be-upper/new-root" && test -f "$R3/be-upper/new" && echo yes || echo no)" "yes"
 

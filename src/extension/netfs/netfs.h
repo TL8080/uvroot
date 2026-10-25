@@ -402,7 +402,11 @@ extern int netfs_overlay_init(NetfsMount * mount, const char *mode,
 			       const char *upper, const char *lower,
 			       const char *guest, NetfsMount * upper_source,
 			       const char *db_override);
+extern const char *netfs_overlay_upper(NetfsMount * mount);
+extern const char *netfs_overlay_lower(NetfsMount * mount);
+extern bool netfs_root_overlay_lower(Tracee * tracee, const char ** lower);
 extern void netfs_overlay_set_read_only(NetfsMount * mount);
+extern bool netfs_root_overlay_upper(Tracee * tracee, const char ** upper);
 /* Copy the complete source tree into the mount's local cache.  */
 extern int netfs_materialize_mount(NetfsMount * mount);
 
