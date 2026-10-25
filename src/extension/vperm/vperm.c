@@ -668,8 +668,6 @@ static int db_load(Tracee *tracee, VpermRoot *root)
 	     * virtualized, so ignore that entry instead of refusing to
 	     * start.
 	     */
-	    note(tracee, WARNING, USER,
-		 "vperm: %s:%u: ignoring empty root entry", root->db, lineno);
 	    continue;
 	}
 	if (decoded[0] == '/') {
