@@ -100,6 +100,8 @@ static int handle_option_img(Tracee * tracee, const Cli * cli,
 			     const char *value);
 static int handle_option_qcow2(Tracee * tracee, const Cli * cli,
 			       const char *value);
+static int handle_option_overlay_root(Tracee * tracee, const Cli * cli,
+				      const char *value);
 static int handle_option_overlay(Tracee * tracee, const Cli * cli,
 				 const char *value);
 static int handle_option_net(Tracee * tracee, const Cli * cli,
@@ -534,6 +536,23 @@ Based on PRoot, Copyright (C) 2015 STMicroelectronics.",
 		 .detail =
 		 "\tRegistered for future work; the QCOW2 backend and the\n\
 \tfilesystem driver that will interpret the image are not implemented yet.",
+		 },
+		{.class = "Overlay options",
+		 .arguments = {
+			       {.name = "--overlay-root",.separator = '=',.value =
+				"string"},
+			       {.name = NULL,.separator = '\0',.value =
+				NULL}},
+		 .handler = handle_option_overlay_root,
+		 .description =
+		 "Overlay the guest root itself over a read-only lower tree.",
+		 .detail =
+		 "\tThe syntax is *mode*,*lower*.  The guest root selected by\n\
+\t-r is type 1, so only the lower tree is given; the three-field form\n\
+\t*mode*,*upper*,*lower* is also accepted.  This root overlay can be\n\
+\tcombined with one ordinary --overlay mount.  The /dev/bkc, /dev/bme\n\
+\tand /dev/brd helpers are attached to the ordinary overlay only.\n\
+\tExample: --overlay-root=block,/var/lower",
 		 },
 		{.class = "Overlay options",
 		 .arguments = {

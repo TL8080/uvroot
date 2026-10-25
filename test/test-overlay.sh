@@ -174,6 +174,26 @@ ok "the lower copy is untouched" \
 ok "the full file is readable in block mode too" \
     "$(ov2 block /bin/cat /mnt/ovl/data 2>/dev/null)" "bind-write"
 
+echo "== --overlay-root combines with one ordinary overlay =="
+R3=/tmp/overlay-test/root-combined
+rm -rf "$R3"
+mkdir -p "$R3/root" "$R3/lower" "$R3/be-upper"
+printf 'root-upper\n' > "$R3/root/root-file"
+printf 'lower-only\n' > "$R3/lower/lower-file"
+ro() {
+    "$UVROOT" -r "$R3/root"         -b /bin:/bin -b /usr:/usr -b /lib:/lib -b /lib64:/lib64         "--overlay-root=block,$R3/lower"         "--overlay=block,/be,$R3/be-upper,$R3/lower" "$@"
+}
+ok "root overlay reads its upper" "$(ro /bin/cat /root-file 2>/dev/null)" "root-upper"
+ok "root overlay reads its lower" "$(ro /bin/cat /lower-file 2>/dev/null)" "lower-only"
+ok "root overlay falls back from lower to upper" \
+    "$(ro /bin/sh -c 'printf upper-write > /new-root; cat /new-root' 2>/dev/null)" "upper-write"
+ok "the ordinary overlay still reads its lower" \
+    "$(ro /bin/cat /be/lower-file 2>/dev/null)" "lower-only"
+ok "the ordinary overlay writes its own upper" \
+    "$(ro /bin/sh -c 'printf be-write > /be/new; cat /be/new' 2>/dev/null)" "be-write"
+ok "root and ordinary uppers stay separate" \
+    "$(test -f "$R3/root/new-root" && test ! -e "$R3/be-upper/new-root" && test -f "$R3/be-upper/new" && echo yes || echo no)" "yes"
+
 echo
 echo "passed: $pass   failed: $fail"
 [ "$fail" -eq 0 ]

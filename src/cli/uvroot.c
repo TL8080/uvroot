@@ -72,6 +72,19 @@ static int handle_option_b(Tracee *tracee, const Cli *cli UNUSED,
 	guest++;
     }
 
+    /*
+     * Binding over the guest root would defeat -r and --overlay-root,
+     * and silently replaces one binding with another (the last one for
+     * "/" wins).  Use -r or --overlay-root for the root itself.
+     */
+    if ((guest != NULL && strcmp(guest, "/") == 0)
+	|| (guest == NULL && strcmp(host, "/") == 0)) {
+	note(tracee, ERROR, USER,
+	     "bind: refusing to bind over the guest root \"/\"; "
+	     "use -r or --overlay-root instead");
+	return -1;
+    }
+
     new_binding(tracee, host, guest, true);
     return 0;
 }
@@ -437,6 +450,12 @@ static int handle_option_overlay(Tracee *tracee, const Cli *cli UNUSED,
 				 const char *value)
 {
     return netfs_add_overlay_mount(tracee, value);
+}
+
+static int handle_option_overlay_root(Tracee *tracee, const Cli *cli UNUSED,
+				      const char *value)
+{
+    return netfs_add_overlay_root_mount(tracee, value);
 }
 
 /*

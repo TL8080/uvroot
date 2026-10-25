@@ -293,6 +293,7 @@ extern int netfs_callback(Extension * extension, ExtensionEvent event,
 extern int netfs_add_mount(Tracee * tracee, const char *spec,
 			   const char *forced_scheme);
 extern int netfs_add_overlay_mount(Tracee * tracee, const char *spec);
+extern int netfs_add_overlay_root_mount(Tracee * tracee, const char *spec);
 /*
  * Return the guest mount point whose local cache is @host, or NULL when
  * @host does not belong to a netfs mount.  Used by other extensions

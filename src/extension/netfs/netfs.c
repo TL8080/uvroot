@@ -4036,7 +4036,8 @@ static NetfsMount *find_mount_by_guest(NetfsConfig *config, const char *guest)
     return NULL;
 }
 
-int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
+static int add_overlay_mount(Tracee *tracee, const char *spec,
+			     bool root_overlay)
 {
     Extension *extension;
     NetfsConfig *config;
@@ -4055,6 +4056,9 @@ int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
     char cache[PATH_MAX];
     char helper[PATH_MAX];
     char resolved[PATH_MAX];
+    char hidden_upper[PATH_MAX];
+    char hidden_lower[PATH_MAX];
+    char hidden_source[PATH_MAX];
     const char *cache_root;
     NetfsMount *upper_source = NULL;
     int status;
@@ -4109,13 +4113,28 @@ int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
     config = config_of(extension);
 
     for (other = config->mounts; other != NULL; other = other->next) {
-	if (other->backend == &netfs_backend_overlay) {
+	if (other->backend != &netfs_backend_overlay)
+	    continue;
+	if (root_overlay) {
 	    note(tracee, ERROR, USER,
-		 "overlay: only one overlay mount is supported per container");
+		 "overlay: a root overlay is already mounted");
+	    return -1;
+	}
+	if (other->guest != NULL && strcmp(other->guest, "/") != 0) {
+	    note(tracee, ERROR, USER,
+		 "overlay: only one non-root overlay mount is supported per container");
 	    return -1;
 	}
     }
 
+    {
+	const char *hidden = root_overlay
+	    ? "/.uvroot-overlay/root" : "/.uvroot-overlay";
+
+	snprintf(hidden_upper, sizeof(hidden_upper), "%s/upper", hidden);
+	snprintf(hidden_lower, sizeof(hidden_lower), "%s/lower", hidden);
+	snprintf(hidden_source, sizeof(hidden_source), "%s/type1-src", hidden);
+    }
     if (snprintf(upper, sizeof(upper), "%s", upper_arg) >= (int) sizeof(upper)
 	|| snprintf(lower, sizeof(lower), "%s", lower_arg) >= (int) sizeof(lower))
 	return -1;
@@ -4123,7 +4142,7 @@ int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
 	char source_spec[PATH_MAX * 2];
 
 	if (snprintf(source_spec, sizeof(source_spec), "%s:%s",
-		     "/.uvroot-overlay/type1-src", upper_arg)
+		     hidden_source, upper_arg)
 	    >= (int) sizeof(source_spec))
 	    return -1;
 	status = netfs_add_mount(tracee, source_spec, NULL);
@@ -4132,8 +4151,7 @@ int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
 		 "overlay: cannot mount type 1 source \"%s\"", upper_arg);
 	    return -1;
 	}
-	upper_source = find_mount_by_guest(config,
-					   "/.uvroot-overlay/type1-src");
+	upper_source = find_mount_by_guest(config, hidden_source);
 	if (upper_source == NULL) {
 	    note(tracee, ERROR, INTERNAL,
 		 "overlay: type 1 source disappeared");
@@ -4170,7 +4188,7 @@ int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
 	NetfsMount *source;
 
 	if (snprintf(source_spec, sizeof(source_spec), "%s:%s",
-		     "/.uvroot-overlay/lower", lower_arg)
+		     hidden_lower, lower_arg)
 	    >= (int) sizeof(source_spec))
 	    return -1;
 	status = netfs_add_mount(tracee, source_spec, NULL);
@@ -4179,7 +4197,7 @@ int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
 		 "overlay: cannot mount type 2 source \"%s\"", lower_arg);
 	    return -1;
 	}
-	source = find_mount_by_guest(config, "/.uvroot-overlay/lower");
+	source = find_mount_by_guest(config, hidden_lower);
 	if (source == NULL) {
 	    note(tracee, ERROR, INTERNAL,
 		 "overlay: type 2 source disappeared");
@@ -4219,13 +4237,14 @@ int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
 	size_t upper_length = strlen(upper);
 	size_t lower_length = strlen(lower);
 
-	if (strcmp(upper, lower) == 0
+	if (!root_overlay
+	    && (strcmp(upper, lower) == 0
 	    || (upper_length < lower_length
 		&& strncmp(upper, lower, upper_length) == 0
 		&& lower[upper_length] == '/')
 	    || (lower_length < upper_length
 		&& strncmp(lower, upper, lower_length) == 0
-		&& upper[lower_length] == '/')) {
+		&& upper[lower_length] == '/'))) {
 	    note(tracee, ERROR, USER,
 		 "overlay: the upper and lower trees must not contain each other");
 	    return -1;
@@ -4289,15 +4308,15 @@ int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
      * the database.  They are ordinary bindings; the helper itself is
      * the same static binary as /dev/bkc, /dev/bme and /dev/brd.
      */
-    if (new_binding(tracee, upper, "/.uvroot-overlay/upper", true) == NULL)
+    if (new_binding(tracee, upper, hidden_upper, true) == NULL)
 	note(tracee, WARNING, USER,
 	     "overlay: cannot expose the bkc/bme helper path for type 1");
     if (strstr(lower_arg, "://") == NULL
-	&& new_binding(tracee, lower, "/.uvroot-overlay/lower", true) == NULL)
+	&& new_binding(tracee, lower, hidden_lower, true) == NULL)
 	note(tracee, WARNING, USER,
 	     "overlay: cannot expose the bkc/bme helper path for type 2");
 
-    {
+    if (!root_overlay) {
 	ssize_t length = readlink("/proc/self/exe", helper,
 				 sizeof(helper) - 1);
 
@@ -4325,4 +4344,68 @@ int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
     note(tracee, INFO, USER, "overlay: %s mounted on %s (%s)",
 	 mount->display, guest, mode);
     return 0;
+}
+
+int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
+{
+    return add_overlay_mount(tracee, spec, false);
+}
+
+/*
+ * --overlay-root=mode,lower overlays the guest root itself over a
+ * read-only lower tree.  The guest root is the type 1 tree, so it is not
+ * repeated on the command line.  The three-field form
+ * mode,upper,lower is accepted for callers that need an explicit upper.
+ */
+int netfs_add_overlay_root_mount(Tracee *tracee, const char *spec)
+{
+    char *copy;
+    char *fields[3];
+    char *cursor;
+    int count = 0;
+    const char *mode;
+    const char *upper;
+    const char *lower;
+    char *full;
+    int status;
+
+    if (spec == NULL || spec[0] == '\0') {
+	note(tracee, ERROR, USER, "overlay-root: empty specification");
+	return -1;
+    }
+    copy = talloc_strdup(tracee->ctx, spec);
+    if (copy == NULL)
+	return -1;
+    cursor = copy;
+    while (count < 3) {
+	fields[count++] = cursor;
+	cursor = strchr(cursor, ',');
+	if (cursor == NULL)
+	    break;
+	*cursor++ = '\0';
+    }
+    if (count != 2 && count != 3) {
+	note(tracee, ERROR, USER,
+	     "overlay-root: expected mode,lower (or mode,upper,lower) in \"%s\"",
+	     spec);
+	return -1;
+    }
+    mode = fields[0];
+    if (count == 2) {
+	upper = get_root(tracee);
+	lower = fields[1];
+	if (upper == NULL || upper[0] == '\0') {
+	    note(tracee, ERROR, USER, "overlay-root: no guest root");
+	    return -1;
+	}
+    } else {
+	upper = fields[1];
+	lower = fields[2];
+    }
+    full = talloc_asprintf(tracee->ctx, "%s,/,%s,%s", mode, upper, lower);
+    if (full == NULL)
+	return -1;
+    status = add_overlay_mount(tracee, full, true);
+    talloc_free(full);
+    return status;
 }

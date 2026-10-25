@@ -103,7 +103,11 @@ Regular options
     point to the overlaid content.  In most cases this default
     behavior shouldn't be a problem, although it is possible to
     explicitly not dereference the guest location by appending it the
-    ``!`` character: ``-b *host_path*:*guest_location!*``.
+    ``!`` character: ``-b *host_path*:*guest_location!*``.  A guest
+    location of ``/`` is rejected; select the root with ``-r`` or
+    ``--overlay-root`` instead.  The root itself may also be supplied by a
+    virtual or network disk (``--img=/:...``, ``--nbd=/:...`` or
+    ``--iscsi=/:...``), or by an overlay.
 
 -q command, --qemu=command
     Execute guest programs through QEMU as specified by *command*.
@@ -561,6 +565,24 @@ Overlay
         /dev/bkc -r /mnt/ovl
         /dev/brd -r /mnt/ovl
         /dev/bme -h /mnt/ovl/path
+
+--overlay-root=string
+    Overlay the guest root itself over a read-only lower tree.
+
+    The syntax is *mode*,*lower*.  The guest root selected by ``-r`` is
+    type 1, so only type 2 is given; the three-field form
+    *mode*,*upper*,*lower* is also accepted.  For the root overlay the
+    upper may be inside the lower tree, which is what
+    ``-r tmp --overlay-root=block,/`` needs.  This root overlay can be
+    combined with one ordinary ``--overlay`` mount.  ``/dev/bkc``, ``/dev/bme`` and
+    ``/dev/brd`` are attached to the ordinary overlay; the root overlay
+    itself has no helper exposure::
+
+        uvroot -r /srv/root --overlay-root=block,/srv/base \
+            --overlay=bind,/mnt/data,/srv/data-upper,/srv/data /bin/sh
+
+    Binding over the guest root with ``-b ...:/`` is rejected: use
+    ``-r`` or ``--overlay-root`` for the root itself.
 
 Virtual permission options
 --------------------------

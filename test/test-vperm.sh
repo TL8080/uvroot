@@ -90,6 +90,11 @@ bind_denied=$({ bind_run /bind/tool >/dev/null; } 2>&1)
 ok "bind virtual 600 over host 700 is denied" \
     "$(printf '%s' "$bind_denied" | grep -c '权限\|denied\|not executable')" "1"
 
+echo "== bind over the guest root is rejected =="
+root_bind_status=0
+"$UVROOT" -r "$R" -b /:/ /bin/true >/dev/null 2>&1 || root_bind_status=$?
+ok "bind to guest / is rejected" "$root_bind_status" "1"
+
 echo "== object type and host access after creation =="
 mkdir -p "$R/typed"
 vp /bin/chmod 700 /typed >/dev/null
