@@ -663,7 +663,13 @@ of it.  A database left behind under a pre-rename name
     identity cannot be changed from inside the container: it is then
     fixed by ``--vperm-id`` when the container is started.  The shipped
     ``su``/``sudo`` shims and the mapping area are read-only for the
-    container, which cannot delete, overwrite or rename them.
+    container, which cannot delete, overwrite or rename them.  For the
+    same reason, ``chown``/``chmod`` on ``/etc/passwd`` and on the
+    ``su``/``sudo`` guest paths is refused with ``EPERM``; a recursive
+    ``chown -R /`` therefore reports those paths while still changing
+    the other files.  This is expected protection, not a vperm database
+    failure.  Change those paths on the host side of the mapping
+    directory if necessary.
 
 --vperm-map=path
     Use *path* as the user mapping directory.
