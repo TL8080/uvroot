@@ -581,9 +581,10 @@ Overlay
     upper may be inside the lower tree, which is what
     ``-r tmp --overlay-root=block,/`` needs.  When the lower tree is the
     host root, uvroot also binds the host runtime directories
-    (``/bin``, ``/usr``, ``/lib``, ``/lib64``, ``/etc`` and ``/dev``)
-    as ordinary subdirectory bindings, so host tools and their dynamic
-    loader can run from the root overlay.  This root overlay can be
+    (``/bin``, ``/usr``, ``/lib``, ``/lib64``, ``/etc``, ``/dev``,
+    ``/proc``, ``/sys`` and ``/run``) as ordinary subdirectory bindings,
+    so host tools, their dynamic loader and /proc users can run from the
+    root overlay.  This root overlay can be
     combined with one ordinary ``--overlay`` mount.  ``/dev/bkc``, ``/dev/bme`` and
     ``/dev/brd`` are attached to the ordinary overlay; the root overlay
     itself has no helper exposure::

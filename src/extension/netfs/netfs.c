@@ -4419,7 +4419,8 @@ int netfs_add_overlay_root_mount(Tracee *tracee, const char *spec)
      */
     if (strcmp(lower, "/") == 0) {
 	static const char *const runtime_dirs[] = {
-	    "/bin", "/usr", "/lib", "/lib64", "/etc", "/dev", NULL
+	    "/bin", "/usr", "/lib", "/lib64", "/etc", "/dev",
+	    "/proc", "/sys", "/run", NULL
 	};
 	const char *const *dir;
 
