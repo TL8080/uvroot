@@ -4286,8 +4286,35 @@ static int add_overlay_mount(Tracee *tracee, const char *spec,
     mount->root.materialized = true;
     mount->root.mount = mount;
 
-    status = netfs_overlay_init(mount, mode, upper, lower, guest,
-				    upper_source);
+    {
+	char db_override[PATH_MAX] = "";
+	const char *db_path = NULL;
+
+	/* A root overlay can use the host root as a read-only upper.  Its
+	 * .overlay database cannot live at /.overlay, so keep it in the
+	 * per-user data directory instead. */
+	if (root_overlay && strcmp(upper, "/") == 0) {
+	    const char *base = getenv("XDG_DATA_HOME");
+	    char directory[PATH_MAX];
+
+	    if (base == NULL || base[0] == '\0') {
+		const char *home = getenv("HOME");
+
+		if (home == NULL || home[0] == '\0')
+		    home = "/tmp";
+		snprintf(directory, sizeof(directory),
+			 "%s/.local/share/uvroot/overlay", home);
+	    } else
+		snprintf(directory, sizeof(directory), "%s/uvroot/overlay",
+			 base);
+	    (void) mkdir_recursive_path(directory);
+	    snprintf(db_override, sizeof(db_override), "%s/root.db",
+		     directory);
+	    db_path = db_override;
+	}
+	status = netfs_overlay_init(mount, mode, upper, lower, guest,
+				    upper_source, db_path);
+    }
     if (status < 0) {
 	note(tracee, ERROR, USER, "overlay: cannot initialize \"%s\": %s",
 	     guest, strerror(-status));
@@ -4341,6 +4368,19 @@ static int add_overlay_mount(Tracee *tracee, const char *spec,
     mount->next = config->mounts;
     config->mounts = mount;
 
+    if (root_overlay && strcmp(upper, "/") == 0) {
+	static const char *const runtime_dirs[] = {
+	    "/bin", "/usr", "/lib", "/lib64", "/etc", "/dev",
+	    "/proc", "/sys", "/run", NULL
+	};
+	const char *const *dir;
+
+	for (dir = runtime_dirs; *dir != NULL; dir++) {
+	    if (access(*dir, X_OK) == 0)
+		(void) new_binding(tracee, *dir, *dir, true);
+	}
+    }
+
     note(tracee, INFO, USER, "overlay: %s mounted on %s (%s)",
 	 mount->display, guest, mode);
     return 0;
@@ -4352,10 +4392,9 @@ int netfs_add_overlay_mount(Tracee *tracee, const char *spec)
 }
 
 /*
- * --overlay-root=mode,lower overlays the guest root itself over a
- * read-only lower tree.  The guest root is the type 1 tree, so it is not
- * repeated on the command line.  The three-field form
- * mode,upper,lower is accepted for callers that need an explicit upper.
+ * --overlay-root=mode,upper overlays the guest root itself, with the
+ * tree selected by -r as the read-only lower.  The three-field form
+ * mode,upper,lower is accepted for callers that need an explicit lower.
  */
 int netfs_add_overlay_root_mount(Tracee *tracee, const char *spec)
 {
@@ -4386,20 +4425,19 @@ int netfs_add_overlay_root_mount(Tracee *tracee, const char *spec)
     }
     if (count != 2 && count != 3) {
 	note(tracee, ERROR, USER,
-	     "overlay-root: expected mode,lower (or mode,upper,lower) in \"%s\"",
+	     "overlay-root: expected mode,upper (or mode,upper,lower) in \"%s\"",
 	     spec);
 	return -1;
     }
     mode = fields[0];
+    upper = fields[1];
     if (count == 2) {
-	upper = get_root(tracee);
-	lower = fields[1];
-	if (upper == NULL || upper[0] == '\0') {
+	lower = get_root(tracee);
+	if (lower == NULL || lower[0] == '\0') {
 	    note(tracee, ERROR, USER, "overlay-root: no guest root");
 	    return -1;
 	}
     } else {
-	upper = fields[1];
 	lower = fields[2];
     }
     full = talloc_asprintf(tracee->ctx, "%s,/,%s,%s", mode, upper, lower);

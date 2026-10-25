@@ -400,7 +400,8 @@ extern const NetfsBackend netfs_backend_smb;
 extern const NetfsBackend netfs_backend_overlay;
 extern int netfs_overlay_init(NetfsMount * mount, const char *mode,
 			       const char *upper, const char *lower,
-			       const char *guest, NetfsMount * upper_source);
+			       const char *guest, NetfsMount * upper_source,
+			       const char *db_override);
 extern void netfs_overlay_set_read_only(NetfsMount * mount);
 /* Copy the complete source tree into the mount's local cache.  */
 extern int netfs_materialize_mount(NetfsMount * mount);

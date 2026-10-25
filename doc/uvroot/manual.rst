@@ -573,22 +573,20 @@ Overlay
         /dev/bme -h /mnt/ovl/path
 
 --overlay-root=string
-    Overlay the guest root itself over a read-only lower tree.
+    Overlay the guest root itself over its read-only lower tree.
 
-    The syntax is *mode*,*lower*.  The guest root selected by ``-r`` is
-    type 1, so only type 2 is given; the three-field form
-    *mode*,*upper*,*lower* is also accepted.  For the root overlay the
-    upper may be inside the lower tree, which is what
-    ``-r tmp --overlay-root=block,/`` needs.  This root overlay does not
-    inject host runtime directories by itself; if its lower is the host
-    root and host tools are needed, add normal subdirectory bindings
-    such as ``-b /usr:/usr -b /lib:/lib -b /lib64:/lib64``.  Only the
-    host root itself is forbidden as a ``-b`` source.  This root overlay
-    can be combined with one ordinary ``--overlay`` mount.  ``/dev/bkc``, ``/dev/bme`` and
-    ``/dev/brd`` are attached to the ordinary overlay; the root overlay
-    itself has no helper exposure::
+    The syntax is *mode*,*upper*.  The tree selected by ``-r`` is the
+    read-only lower, so only the upper is given; the three-field form
+    *mode*,*upper*,*lower* is also accepted.  When the upper is ``/``,
+    uvroot also binds the host runtime directories (``/bin``, ``/usr``,
+    ``/lib``, ``/lib64``, ``/etc``, ``/dev``, ``/proc``, ``/sys`` and
+    ``/run``) as ordinary subdirectory bindings, so host tools and their
+    dynamic loader can run from the root overlay.  This root overlay can
+    be combined with one ordinary ``--overlay`` mount.  ``/dev/bkc``,
+    ``/dev/bme`` and ``/dev/brd`` are attached to the ordinary overlay;
+    the root overlay itself has no helper exposure::
 
-        uvroot -r /srv/root --overlay-root=block,/srv/base \
+        uvroot -r /srv/lower --overlay-root=block,/srv/upper \
             --overlay=bind,/mnt/data,/srv/data-upper,/srv/data /bin/sh
 
     Binding the host root with ``-b /:...`` is rejected.  A subdirectory

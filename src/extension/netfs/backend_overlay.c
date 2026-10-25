@@ -1456,7 +1456,8 @@ static int overlay_statfs(NetfsMount *mount, const char *rel UNUSED,
 
 static int overlay_init(NetfsMount *mount, const char *mode,
 			const char *upper, const char *lower,
-			const char *guest, NetfsMount *upper_source)
+			const char *guest, NetfsMount *upper_source,
+			const char *db_override)
 {
     OverlayData *data;
     char db_path[OVERLAY_PATH_MAX];
@@ -1469,7 +1470,10 @@ static int overlay_init(NetfsMount *mount, const char *mode,
     mount->backend_data = data;
     data->db.mode = strcmp(mode, "block") == 0
 	? OVERLAY_MODE_BLOCK : OVERLAY_MODE_BIND;
-    snprintf(db_path, sizeof(db_path), "%s/%s", upper, OVERLAY_DB_NAME);
+    if (db_override != NULL)
+	snprintf(db_path, sizeof(db_path), "%s", db_override);
+    else
+	snprintf(db_path, sizeof(db_path), "%s/%s", upper, OVERLAY_DB_NAME);
     status = overlay_db_load(&data->db, db_path);
     if (status < 0) {
 	talloc_free(data);
@@ -1551,7 +1555,8 @@ const NetfsBackend netfs_backend_overlay = {
 
 int netfs_overlay_init(NetfsMount *mount, const char *mode, const char *upper,
 		       const char *lower, const char *guest,
-		       NetfsMount *upper_source)
+		       NetfsMount *upper_source, const char *db_override)
 {
-    return overlay_init(mount, mode, upper, lower, guest, upper_source);
+    return overlay_init(mount, mode, upper, lower, guest, upper_source,
+			db_override);
 }

@@ -181,7 +181,7 @@ mkdir -p "$R3/root" "$R3/lower" "$R3/be-upper"
 printf 'root-upper\n' > "$R3/root/root-file"
 printf 'lower-only\n' > "$R3/lower/lower-file"
 ro() {
-    "$UVROOT" -r "$R3/root"         -b /bin:/bin -b /usr:/usr -b /lib:/lib -b /lib64:/lib64         "--overlay-root=block,$R3/lower"         "--overlay=block,/be,$R3/be-upper,$R3/lower" "$@"
+    "$UVROOT" -r "$R3/lower"         -b /bin:/bin -b /usr:/usr -b /lib:/lib -b /lib64:/lib64         "--overlay-root=block,$R3/root"         "--overlay=block,/be,$R3/be-upper,$R3/lower" "$@"
 }
 ok "root overlay reads its upper" "$(ro /bin/cat /root-file 2>/dev/null)" "root-upper"
 ok "root overlay reads its lower" "$(ro /bin/cat /lower-file 2>/dev/null)" "lower-only"

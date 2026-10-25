@@ -548,14 +548,14 @@ Based on PRoot, Copyright (C) 2015 STMicroelectronics.",
 				NULL}},
 		 .handler = handle_option_overlay_root,
 		 .description =
-		 "Overlay the guest root itself over a read-only lower tree.",
+		 "Overlay a writable upper over the -r guest root as lower.",
 		 .detail =
-		 "\tThe syntax is *mode*,*lower*.  The guest root selected by\n\
-\t-r is type 1, so only the lower tree is given; the three-field form\n\
-\t*mode*,*upper*,*lower* is also accepted.  This root overlay can be\n\
+		 "\tThe syntax is *mode*,*upper*.  The tree selected by -r is\n\
+\tthe read-only lower, so only the upper is given; the three-field\n\
+\tform *mode*,*upper*,*lower* is also accepted.  This overlay can be\n\
 \tcombined with one ordinary --overlay mount.  The /dev/bkc, /dev/bme\n\
 \tand /dev/brd helpers are attached to the ordinary overlay only.\n\
-\tExample: --overlay-root=block,/var/lower",
+\tExample: --overlay-root=block,/var/upper",
 		 },
 		{.class = "Overlay options",
 		 .arguments = {
